@@ -41,7 +41,6 @@ received_notifications_metrics = {
 other_metrics = {
     'merge_pacs_eanp_database_connections_active'   : ['gauge', 'Active database connections for the EA Notification processor service'],    #this will be calculated from data on the page
     'merge_pacs_eanp_database_connections_idle'     : ['gauge', 'Idle database connections for the EA Notification processor service'],
-    'merge_pacs_eanp_server_uptime'                 : ['counter', 'Number of seconds the process has been running'],
     'merge_pacs_eanp_java_memory_usage_current'     : ['gauge', 'EA Notification Processor java memory usage, current (MB)'],
     'merge_pacs_eanp_java_memory_usage_peak'        : ['counter', 'EA Notification Processor java memory usage, peak (MB)'],
     'merge_pacs_eanp_native_memory_usage_current'   : ['gauge', 'EA Notification Processor native memory usage, current (MB)'],
@@ -77,34 +76,43 @@ def get_all_merge_pacs_metrics():
     return results
 
 def get_notification_manager_metrics(url_text, column_names=[]):
-    df_list = pd.read_html(url_text, match=column_names[0], header=0) # this parses the table with the term matching the first column name we're expecting in to a list
-    df = df_list[0]     # assume that there is only one table that matches (or at least that the FIRST table that matches is the one we want). 
-                        # It should be the notification manager data
 
     # Create dict of results with column_name -> value pairs
     results = {}
 
-    for colname in column_names:
-        results[colname] = df[colname][0]       # Create a dict of colname -> value pairs. Assume there is only one data row that contains the relevant data.
+    try:
+        df_list = pd.read_html(url_text, match=column_names[0], header=0) # this parses the table with the term matching the first column name we're expecting in to a list
+    
+    except:
+        pass
+    else:
+        df = df_list[0]     # assume that there is only one table that matches (or at least that the FIRST table that matches is the one we want). 
+                        # It should be the notification manager data
+        for colname in column_names:    # Create a dict of colname -> value pairs. Assume there is only one data row that contains the relevant data.
+            results[colname] = df[colname][0]
 
-    return results
+    finally:
+        return results
 
 def get_received_notifications_metrics(url_text, column_names=[]):
     # Arguments
     #   url_text - Text to parse (raw html)
     #   column_names[] - List of names of table header columns to look for in the raw html
     # 
-    df_list = pd.read_html(url_text, match=column_names[0], header=0) # this parses the table with the term matching the first column name we're expecting in to a list
-    df = df_list[0]     # assume that there is only one table that matches (or at least that the FIRST table that matches is the one we want). 
-                        # It should be the notification manager data
-
     # Create dict of results with column_name -> value pairs
     results = {}
+    try:
+        df_list = pd.read_html(url_text, match=column_names[0], header=0) # this parses the table with the term matching the first column name we're expecting in to a list
+    except:
+        pass
 
-    for colname in column_names:
-        results[colname] = df[colname][0]       # Create a dict of colname -> value pairs. Assume there is only one data row that contains the relevant data.
-
-    return results
+    else:
+        df = df_list[0]     # assume that there is only one table that matches (or at least that the FIRST table that matches is the one we want). 
+                        # It should be the notification manager data
+        for colname in column_names:
+            results[colname] = df[colname][0]       # Create a dict of colname -> value pairs. Assume there is only one data row that contains the relevant data.
+    finally:
+        return results
 
 def get_other_metrics(url_text):
     # Get other metrics through pattern matching. Returns a t dict of metric_name -> value
@@ -166,8 +174,7 @@ def get_other_metrics(url_text):
         metrics_dict['merge_pacs_eanp_active_studies_idletime_max'] = max_value
         metrics_dict['merge_pacs_eanp_active_studies_idletime_avg'] = mean_value
     except:
-        metrics_dict['merge_pacs_eanp_active_studies_idletime_max'] = 0
-        metrics_dict['merge_pacs_eanp_active_studies_idletime_avg'] = 0
+        pass
     
     
     return metrics_dict
@@ -188,22 +195,26 @@ def main():
         # URL to get server status page for this server
         url = f'http://{servername}:11111/serverStatus'
 
-        r = requests.get(url)
-        #df_list = pd.read_html(r.text, match='Jobs Constructed', header=0) # this parses the table with the term 'Jobs' in it to a list
-        #df = df_list[0]     # assume that there is only one table that matches (or at least that the FIRST table that matches is the one we want). 
-                        # It should be the notification manager data
-        
-        # Parse the text to get the values for the Notification Manager table
-        notification_manager_values_list[servername] = {}
-        notification_manager_values_list[servername] = get_notification_manager_metrics(r.text, list(notification_manager_metrics.keys()))   # Pass in the text to parse and the column names we're expecting; add column names to list of metrics for this server
+        try:
+            r = requests.get(url)
+            #df_list = pd.read_html(r.text, match='Jobs Constructed', header=0) # this parses the table with the term 'Jobs' in it to a list
+            #df = df_list[0]     # assume that there is only one table that matches (or at least that the FIRST table that matches is the one we want). 
+                            # It should be the notification manager data
+        except:
+            pass
 
-        # Parse the text to get values for the Received Notifications table
-        received_notifications_values_list[servername] = {}
-        received_notifications_values_list[servername] = get_received_notifications_metrics(r.text, list(received_notifications_metrics.keys()))   # Pass in the text to parse and the column names we're expecting; add column names to list of metrics for this server
+        else:
+            # Parse the text to get the values for the Notification Manager table
+            notification_manager_values_list[servername] = {}
+            notification_manager_values_list[servername] = get_notification_manager_metrics(r.text, list(notification_manager_metrics.keys()))   # Pass in the text to parse and the column names we're expecting; add column names to list of metrics for this server
 
-        # Parse other metrics
-        other_metrics_values_list[servername] = {}
-        other_metrics_values_list[servername] = get_other_metrics(r.text)
+            # Parse the text to get values for the Received Notifications table
+            received_notifications_values_list[servername] = {}
+            received_notifications_values_list[servername] = get_received_notifications_metrics(r.text, list(received_notifications_metrics.keys()))   # Pass in the text to parse and the column names we're expecting; add column names to list of metrics for this server
+
+            # Parse other metrics
+            other_metrics_values_list[servername] = {}
+            other_metrics_values_list[servername] = get_other_metrics(r.text)
     
     #
     # EA notification manager metrics
@@ -221,9 +232,10 @@ def main():
         output_list.append(line)
         
         for servername in notification_manager_values_list.keys():
-            #print(f'{metric_name}{{server="{servername}"}} {notification_manager_values_list[servername][colname]}')
-            line = f'{metric_name}{{server="{servername}"}} {notification_manager_values_list[servername][colname]}'
-            output_list.append(line)
+            if colname in notification_manager_values_list[servername]:
+                #print(f'{metric_name}{{server="{servername}"}} {notification_manager_values_list[servername][colname]}')
+                line = f'{metric_name}{{server="{servername}"}} {notification_manager_values_list[servername][colname]}'
+                output_list.append(line)
         #print(f'{metric_name}{{server="{servername}"}} {df[colname][0]}')  #assume there is only one data row that contains the relevant data
         #print()
         line = ''
@@ -244,9 +256,10 @@ def main():
         if additional_tags:
             additional_tags = f',{additional_tags}' # add a leading comma if there are additional tags
         for servername in received_notifications_values_list.keys():
-            #print(f'{metric_name}{{server="{servername}"{additional_tags}}} {received_notifications_values_list[servername][colname]}')
-            line = f'{metric_name}{{server="{servername}"{additional_tags}}} {received_notifications_values_list[servername][colname]}'
-            output_list.append(line)
+            if colname in received_notifications_values_list[servername]:
+                #print(f'{metric_name}{{server="{servername}"{additional_tags}}} {received_notifications_values_list[servername][colname]}')
+                line = f'{metric_name}{{server="{servername}"{additional_tags}}} {received_notifications_values_list[servername][colname]}'
+                output_list.append(line)
 
     line = ''
     output_list.append(line)
@@ -291,13 +304,17 @@ def main():
     output_list.append(f'# TYPE merge_pacs_cms_active_users gauge')
     for servername in server_list_2:
         url = f'http://{servername}:11109/serverStatus'
-        r = requests.get(url)
-        #Active users
-        pattern = r'Active pipelines:<B> (?P<active_users>\d+)'
-        get = re.search(pattern, r.text)
-        if get:
-            Data = get.group('active_users')
-            output_list.append(f'merge_pacs_cms_active_users{{server="{servername}"}} {Data}')
+        try:
+            r = requests.get(url)
+        except:
+            pass
+        else:
+            #Active users
+            pattern = r'Active pipelines:<B> (?P<active_users>\d+)'
+            get = re.search(pattern, r.text)
+            if get:
+                Data = get.group('active_users')
+                output_list.append(f'merge_pacs_cms_active_users{{server="{servername}"}} {Data}')
     output_list.append('')   
 
 
