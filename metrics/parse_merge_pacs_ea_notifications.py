@@ -291,7 +291,7 @@ def main():
 
         output_list.append('')        # Blank line at the end of each metric
 
-    # List of servers to check for status data
+    # List of servers to check for status data for port 11109
     server_list_2 = [
         'mergepacsprd',
         'mergepacscnt',
@@ -315,7 +315,143 @@ def main():
             if get:
                 Data = get.group('active_users')
                 output_list.append(f'merge_pacs_cms_active_users{{server="{servername}"}} {Data}')
-    output_list.append('')   
+    output_list.append('')
+
+    
+    # List of servers to check for status data For port 11108
+    server_list_3 = [
+        'mergepacsprd',
+        'mergepacscnt',
+        'mergepacstest',
+        'mergepacsrel',
+    ]
+
+    for servername in server_list_3:
+        url = f'http://{servername}:11108/serverStatus'
+        try:
+            r = requests.get(url)
+            
+            
+        except:
+            pass
+        else:
+            
+            #Active and Idle DB connections
+            try:
+                s = re.search(r'connections: (?P<db_total>\d+) \((?P<db_idle>\d+)', r.text)
+            except:
+                pass
+            else:
+                db_active = int(s.group('db_total')) - int(s.group('db_idle'))
+                active = db_active
+                idle = s.group('db_idle')
+                output_list.append(f'# HELP merge_pacs_wss_database_connections_active active database connections from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_database_connections_active gauge')
+                output_list.append(f'merge_pacs_wss_database_connections_active{{server="{servername}"}} {active}')
+                output_list.append(f'# HELP merge_pacs_wss_database_connections_idle idle database connections from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_database_connections_idle gauge')
+                output_list.append(f'merge_pacs_wss_database_connections_active{{server="{servername}"}} {idle}')
+                output_list.append('')
+            #server Up time
+            try:
+                u = re.search(r'up time: (?P<hours>\d+)h(?P<minutes>\d+)m(?P<seconds>\d+)s', r.text)
+            except:
+                pass
+            else:
+                hours = int(u.group('hours'))
+                minutes = int(u.group('minutes'))
+                seconds = int(u.group('seconds'))
+                total_seconds = ((minutes * 60) + seconds)
+                total_hours = (total_seconds / 3600)
+                up_time = hours + total_hours
+                output_list.append(f'# HELP merge_pacs_wss_server_uptime server continously running since how many hours from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_server_uptime gauge')
+                output_list.append(f'merge_pacs_wss_database_server_uptime{{server="{servername}"}} {up_time}')
+                output_list.append('')
+
+            #memory usage
+            try:
+                u = re.search(r'Java (?P<java_current>\d+)MB\/(?P<java_peak>\d+)MB.*Native (?P<native_current>\d+)MB\/(?P<native_peak>\d+)MB.*Process Total (?P<process_current>\d+)MB\/(?P<process_peak>\d+)MB', r.text)
+            except:
+                pass
+            else:
+                java_current = u.group('java_current')
+                java_peak = u.group('java_peak')
+                native_current = u.group('native_current')
+                native_peak = u.group('native_peak')
+                process_current = u.group('process_current')
+                process_peak = u.group('process_peak')
+                output_list.append(f'# HELP merge_pacs_wss_memory_usage server usage of memory for various types from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_memory_usage counter')
+                output_list.append(f'merge_pacs_wss_memory_usage{{server="{servername}",memoryType="java_current"}} {java_current}')
+                output_list.append(f'merge_pacs_wss_memory_usage{{server="{servername}",memoryType="java_peak"}} {java_peak}')
+                output_list.append(f'merge_pacs_wss_memory_usage{{server="{servername},memoryType="native_current"}} {native_current}')
+                output_list.append(f'merge_pacs_wss_memory_usage{{server="{servername},memoryType="native_peak"}} {native_peak}')
+                output_list.append(f'merge_pacs_wss_memory_usage{{server="{servername}",memoryType="process_current"}} {process_current}')
+                output_list.append(f'merge_pacs_wss_memory_usage{{server="{servername},memoryType="process_peak"}} {process_peak}')
+                output_list.append('')
+            #connected clients and Active worklist
+            try:
+                u = re.search(r'clients: <B>(?P<connected_clients>\d+)</B><br>Active worklists: <B>(?P<loaded>\d+) loaded, (?P<loading>\d+) loading, (?P<selecting>\d+) selecting, (?P<waiting>\d+) ', r.text)
+            except:
+                pass
+            else:
+                connected_clients = u.group('connected_clients')
+                loaded = u.group('loaded')
+                loading = u.group('loading')
+                selecting = u.group('selecting')
+                waiting = u.group('waiting')
+
+                #Connected Clients print
+                output_list.append(f'# HELP merge_pacs_wss_connected_clients number of connected clients from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_connected_clients gauge')
+                output_list.append(f'merge_pacs_wss_connected_clients{{server="{servername}"}} {connected_clients}')
+                output_list.append('')
+                #Active Worklist print
+                output_list.append(f'# HELP merge_pacs_wss_active_worklists various active worklists from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_active_worklists counter')
+                output_list.append(f'merge_pacs_wss_active_worklists{{server="{servername}",worklisType="loaded"}} {loaded}')
+                output_list.append(f'merge_pacs_wss_active_worklists{{server="{servername}",worklisType="loading"}} {loading}')
+                output_list.append(f'merge_pacs_wss_active_worklists{{server="{servername}",worklisType="selecting"}} {selecting}')
+                output_list.append(f'merge_pacs_wss_active_worklists{{server="{servername}",worklisType="waiting"}} {waiting}')
+                output_list.append('')
+            #exam cache
+            try:
+                u = re.search(r'Loaded exams: (?P<loaded_exams>\d+) .*. Stale exams: (?P<stale_exams>\d+). Exam loads: (?P<exam_loads>\d+) ', r.text)
+            except:
+                pass
+            else:
+                loaded_exams = u.group('loaded_exams')
+                stale_exams = u.group('stale_exams')
+                exam_loads = u.group('exam_loads')
+                output_list.append(f'# HELP merge_pacs_wss_exam_cache number of cached exams from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_exam_cache counter')
+                output_list.append(f'merge_pacs_wss_exam_cache{{server="{servername}",examcachetype="loaded"}} {loaded_exams}')
+                output_list.append(f'merge_pacs_wss_exam_cache{{server="{servername}",examcachetype="stale"}} {stale_exams}')
+                output_list.append(f'merge_pacs_wss_exam_cache{{server="{servername}",examcachetype="loads}} {exam_loads}')
+                output_list.append('')
+
+            #pending jobs
+            try:
+                u = re.search(r'Pending jobs</a> - Exam requests: (?P<exam_requests>\d+). Patient updates: (?P<patient_updates>\d+). Order updates: (?P<order_updates>\d+). Study updates: (?P<study_updates>\d+). Status updates: (?P<status_updates>\d+). Instance count updates: (?P<instance_count_updates>\d+). Custom tag updates: (?P<custom_tag_updates>\d+)', r.text)
+            except:
+                pass
+            else:
+                exam_requests = u.group('exam_requests')
+                patient_updates = u.group('patient_updates')
+                order_updates = u.group('order_updates')
+                study_updates = u.group('study_updates')
+                status_updates = u.group('status_updates')
+                instance_count_updates = u.group('instance_count_updates')
+                output_list.append(f'# HELP merge_pacs_wss_pending_jobs various pending jobs from worklist server port 11108')
+                output_list.append(f'# TYPE merge_pacs_wss_pending_jobs counter')
+                output_list.append(f'merge_pacs_wss_pending_jobs{{server="{servername}",pendingjobsType="exam_requests"}} {exam_requests}')
+                output_list.append(f'merge_pacs_wss_pending_jobs{{server="{servername}",pendingjobsType="patient_updates"}} {patient_updates}')
+                output_list.append(f'merge_pacs_wss_pending_jobs{{server="{servername}",pendingjobsType="order_updates"}} {order_updates}')
+                output_list.append(f'merge_pacs_wss_pending_jobs{{server="{servername}",pendingjobsType="study_updates"}} {study_updates}')
+                output_list.append(f'merge_pacs_wss_pending_jobs{{server="{servername}",pendingjobsType="status_updates"}} {status_updates}')
+                output_list.append('')
+    output_list.append('')
 
 
     # Get ending time and calculate time in sec (x.xx) it took the script to run
