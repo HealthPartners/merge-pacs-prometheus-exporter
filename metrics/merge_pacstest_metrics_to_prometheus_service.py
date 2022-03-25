@@ -19,13 +19,11 @@ Versions:
  2.0 - 03/21/22  - Added the rest of the metrics Hari has already created logic for.
                 - Moved three "common" parsing functions to the main body instead of being inside each class
                 - Gave each metric class more input arguments so that more lines could just be identical in each class (e.g. prefix)
- 3.0 - 03/22/22 - Updated to be able to start as a service (or no, using a "noservice" arguement)
+ 3.0 - 03/25/22 - Updated to be able to start as a service (or not, using a "noservice" arguement), other improvements
  """
 
 from datetime import datetime
-from http import server
 import logging
-from multiprocessing.connection import wait
 import os
 import pandas
 from prometheus_client import start_http_server, Gauge, Summary
@@ -35,7 +33,6 @@ import servicemanager
 import socket
 import sys
 import time
-#from urllib.error import HTTPError
 import win32event
 import win32service 
 import win32serviceutil
@@ -113,9 +110,9 @@ class MessagingServerAppMetrics:
         logging.info(f'Initializing metrics for {self.service_name}')
         self.g_database_connections = Gauge(f'{self.prefix}_database_connections', f'Active database connections from {self.service_name} service', ['server', 'dbConnectionStatus'])
         self.g_service_uptime = Gauge(f'{self.prefix}_server_uptime', f'Number of hours {self.service_name} has been running since last restart', ['server'])
-        self.g_memory_current = Gauge(f'{self.prefix}_msgs_memory_current', f'Current memory utilization for various types from {self.service_name}', ['server', 'memoryType'])
-        self.g_memory_peak = Gauge(f'{self.prefix}_msgs_memory_peak', f'Peak memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
-        self.g_message_counts = Gauge(f'{self.prefix}_msgs_message_count', f'Number of messages per queue from the {self.service_name} service', ['server', 'queueName', 'queueType'])
+        self.g_memory_current = Gauge(f'{self.prefix}_memory_current', f'Current memory utilization for various types from {self.service_name}', ['server', 'memoryType'])
+        self.g_memory_peak = Gauge(f'{self.prefix}_memory_peak', f'Peak memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
+        self.g_message_counts = Gauge(f'{self.prefix}_message_count', f'Number of messages per queue from the {self.service_name} service', ['server', 'queueName', 'queueType'])
 
     def fetch(self, http_request_timeout = 2.0):
         """ 
@@ -1004,35 +1001,52 @@ class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
 
 
 def main():
-    """Main entry point"""
+    """Main entry point
+    
+    There is an option to run the code without going through the windows service process mainly for debugging. You can
+    also optionally provide a second argument in this mode to target a server other than the localhost.
 
-    hp_metric_service = RunHealthPartnersMetricsService.parse_command_line()
-    #logging.info(f'Starting {sys.argv[0]} version {CURRENT_VERSION}')
+        this_script.py noservice [servername]
+            OR
+        this_script.py [options] install|update|remove|start [...]|stop|restart [...]|debug [...]
+    
     """
+
+    logging.info(f'Starting {sys.argv[0]} version {CURRENT_VERSION}')
+
+    try:
+        arg1 = sys.argv[1]
+    except:
+        arg1 = None
+
     if sys.argv[1] == 'noservice':
         ### Run WITHOUT calling the service options install, run, start and restart this application as a Windows service
 
-        # Get the server's name (in lowercase) from the COMPUTERNAME environment variable to use in metric labels
-        server_name = os.getenv('COMPUTERNAME', 'merge_pacs_unknown_server').lower()
+        try:
+            # If a second argument is provided use that as the server name to collect metrics from
+            server_name = sys.argv[2]
+        except:
+            # Get the server's name (in lowercase) from the COMPUTERNAME environment variable to use in metric labels
+            server_name = os.getenv('COMPUTERNAME', 'merge_pacs_unknown_server').lower()
 
         # Initialize new classes to set up all of the class definitions, define the metrics, etc.
-        messaging_server_app_metrics = MessagingServerAppMetrics(metric_url='http://localhost:11104/serverStatus', \
+        messaging_server_app_metrics = MessagingServerAppMetrics(metric_url=f'http://{server_name}:11104/serverStatus', \
             metric_server_label=server_name, metric_service_name='Messaging Server', metric_prefix='merge_pacs_msgs')
         
-        worklist_server_app_metrics = WorklistServerAppMetrics(metric_url='http://localhost:11108/serverStatus', \
+        worklist_server_app_metrics = WorklistServerAppMetrics(metric_url=f'http://{server_name}:11108/serverStatus', \
             metric_server_label=server_name, metric_service_name='Worklist Server', metric_prefix='merge_pacs_ws')
         
-        client_messaging_server_app_metrics = ClientMessagingServerAppMetrics(metric_url='http://localhost:11109/serverStatus', \
+        client_messaging_server_app_metrics = ClientMessagingServerAppMetrics(metric_url=f'http://{server_name}:11109/serverStatus', \
             metric_server_label=server_name, metric_service_name='Client Messaging Server', metric_prefix='merge_pacs_cms')
 
-        application_server_app_metrics = ApplicationServerAppMetrics(metric_url='http://localhost/servlet/AppServerMonitor', \
+        application_server_app_metrics = ApplicationServerAppMetrics(metric_url=f'http://{server_name}/servlet/AppServerMonitor', \
             metric_server_label=server_name, metric_service_name='Application (MergePACSWeb) Server (/servlet/AppServerMonitor)', \
             metric_prefix='merge_pacs_as', metric_username=APP_USERNAME, metric_password=APP_PASSWORD, metric_domain=APP_DOMAIN)
 
-        ea_notification_procesor_app_metrics = EANotificationProcessorAppMetrics(metric_url='http://localhost:11111/serverStatus', \
+        ea_notification_procesor_app_metrics = EANotificationProcessorAppMetrics(metric_url=f'http://{server_name}:11111/serverStatus', \
             metric_server_label=server_name, metric_service_name='EA Notification Processor', metric_prefix='merge_pacs_eanp')
 
-        scheduler_app_metrics = SchedulerAppMetrics(metric_url='http://localhost:11098/serverStatus', \
+        scheduler_app_metrics = SchedulerAppMetrics(metric_url=f'http://{server_name}:11098/serverStatus', \
             metric_server_label=server_name, metric_service_name='Scheduler', metric_prefix='merge_pacs_ss')
 
 
@@ -1050,16 +1064,20 @@ def main():
             ea_notification_procesor_app_metrics.fetch()
             scheduler_app_metrics.fetch()
 
-            logging.info(f'### Metrics collection complete. Sleeping for {POLLING_INTERVAL_SECONDS} seconds.')
+            logging.info(f'### End metric collection for this iteration. Sleeping for {POLLING_INTERVAL_SECONDS} seconds. ###')
+            
+            wait_seconds = 0     # reset the counter
 
-            time.sleep(POLLING_INTERVAL_SECONDS)
+            while wait_seconds < POLLING_INTERVAL_SECONDS:
+                time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
+                wait_seconds = wait_seconds + 1
 
         logging.warning('Somehow we have exited the metrics collection loop!')    
 
     else:
         # Pass the argument to the win32serviceutil command to be interested as a start/stop/install/remove/debug command for the service
         hp_metric_service = RunHealthPartnersMetricsService.parse_command_line()
-    """
+    
     
 
 
