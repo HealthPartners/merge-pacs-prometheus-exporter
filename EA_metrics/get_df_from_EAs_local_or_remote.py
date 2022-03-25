@@ -20,6 +20,7 @@ Created: 3/4/2022
 Versions:
  1.0 - 03/04/22 - created by Ben
  2.0 - 03/15/22 - Changed from printing output to using the prometheus_client library to format and host http output
+ 2.1 - 03/25/22 - Update to change to CONSTANTS for some of the script definitions, added mergeeatestcnt peer definitions, changed polling interval
  """
 
 import logging
@@ -83,6 +84,11 @@ peers_and_servers = {
         'mergeeatest',  # this is the combined elb/clarc node.. maybe?
         'rcs01',
         'rcs02',
+    ],
+    'mergeeatestcnt' : [
+        'mergeeatestcnt',  # this is the combined elb/clarc node.. maybe?
+        'rcs01',
+        'rcs02',
     ]
 }
 
@@ -91,10 +97,10 @@ EA_USERNAME = 'healthpartners'
 EA_PASSWORD = 'H3@lthp@rtn3rsP@C5'
 
 # How often the metric data should be refreshed from the application source
-polling_interval_seconds = 20
+POLLING_INTERVAL_SECONDS = 60
 
 # What port this application should host the local http output on (default is 8080)
-hosting_port = 8080
+HOSTING_PORT = 7601
 
 # Define the regex pattern that will match data for the 'df' command output. It should match cases like these:
 #   /dev/sda6                          4190208    2114084    2076124  51% /var
@@ -332,11 +338,11 @@ def main():
             logging.error('The hostname %s is not defined in this script so results will probably not be what you expect!' % name_of_peer)
 
     # Initialize a new class to set up all of the class definitions, define the metrics, etc.
-    app_metrics = AppMetrics(hosting_port=hosting_port, polling_interval_seconds=polling_interval_seconds, peer_name=name_of_peer)
+    app_metrics = AppMetrics(hosting_port=HOSTING_PORT, polling_interval_seconds=POLLING_INTERVAL_SECONDS, peer_name=name_of_peer)
     
     # Start up the http mini-server
-    logging.info('Starting http server on port %s' % hosting_port)
-    start_http_server(hosting_port)
+    logging.info('Starting http server on port %s' % HOSTING_PORT)
+    start_http_server(HOSTING_PORT)
 
     # Start the infinite loop that will refresh the metrics at every polling interval
     app_metrics.run_metrics_loop()
