@@ -466,5 +466,6 @@ def main():
 
 if __name__ == "__main__":
     metrics_list = main()
-    sep = '\n'
-    print(sep.join(metrics_list))
+
+    for line in metrics_list:
+        print(f'{line}')
