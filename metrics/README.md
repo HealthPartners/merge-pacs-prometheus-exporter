@@ -1,5 +1,5 @@
 # Summary of Scripts in this Folder
-* merge_pacs_metric_to_prometheus_service.py - Script that is meant to be installed and run as a service on each Merge PACS server. Provides a prometheus exporter that hosts data on port 7601 of the server itself.
+* **merge_pacs_metric_to_prometheus_service.py** - Script that is meant to be installed and run as a service on each Merge PACS server. Provides a prometheus exporter that hosts data on port 7601 of the server itself.
 
 ## merge_pacs_metric_to_prometheus_service.py
 ## Purpose
@@ -17,9 +17,12 @@ Collects metrics data from the locally hosted pages that Merge PACS processes ex
 ### Deployement Steps
 * Copy the updated script from GitLab to the K:\HPMetrics (shared as \\server\HPMetrics) folder on each server
 * From a local command prompt, run these command for each server (using your SA account in place of "YOUR_SA"): 
-** runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove" (this will error out if the service has NEVER run on this server before)
-** runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install"
-** runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start"
-** <need to set service to automatic>
+```
+runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove" (this will error out if the service has NEVER run on this server before)
+runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install"
+runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start"
+<need to set service to automatic>
+```
+
 
 
