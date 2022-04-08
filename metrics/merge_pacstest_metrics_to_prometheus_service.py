@@ -21,13 +21,14 @@ Versions:
                 - Gave each metric class more input arguments so that more lines could just be identical in each class (e.g. prefix)
  3.0 - 03/25/22 - Updated to be able to start as a service (or not, using a "noservice" arguement), other improvements
  3.1 - 03/27/22 - Made a separate function to initialize metrics to be able to reuse it in both the "noservice" and regular methods of running
+ 3.2 - 04/08/22 - Add exporter info class to be able to export some info metrics about this process. Starting with just the version number of the exporter.
  """
 
 from datetime import datetime
 import logging
 import os
 import pandas
-from prometheus_client import start_http_server, Gauge, Summary
+from prometheus_client import start_http_server, Gauge, Summary, Info
 import re
 import requests
 import servicemanager
@@ -60,7 +61,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.1
+CURRENT_VERSION = 3.2
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 20
@@ -76,6 +77,52 @@ APP_DOMAIN = 'healthpartners'
 # Set logging parameters
 # Change level to print more or fewer debugging messages
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class ExporterSelfMetrics:
+    """
+    Functions to:
+    * Initialize the class and define each metric that we're going to collect
+    * Get the data from the source application metric page
+    * Helper functions for formatting each type of metric to make code more readable
+    """
+
+    def __init__(self, metric_url, metric_server_label='unknown_merge_pacs_servername', metric_service_name='Merge PACS Process', \
+        metric_prefix='merge_pacs_unk', metric_username='', metric_password='', metric_domain='healthpartners'):
+        
+        logging.info(f'Initializing the {self.__class__.__name__} metric data class')
+
+        # The url where this service's metrics are available
+        self.metric_url = metric_url
+
+        # Define the label to use for {server=XXX} labels in each metric. Generally this should be the server's name
+        self.server_label = metric_server_label
+        
+        # Define a service name for clarity in debugging
+        self.service_name = metric_service_name
+
+        # Define login information needed to get to the metrics
+        self.metric_username = metric_username
+        self.metric_password = metric_password
+        self.metric_domain = metric_domain
+ 
+        # What is the prefix string all these metrics will share? (Don't end in "_" -- one will be added)
+        self.prefix = metric_prefix
+
+        # Define the unique metrics to collect (labels will be added later)
+        logging.info(f'Initializing metrics for {self.service_name}')
+        self.i_exporter_version = Info(f'{self.prefix}', f'The version of this prometheus exporter script', ['server', 'version'])
+
+    def fetch(self, http_request_timeout = 2.0):
+        """ 
+        Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
+        """
+        logging.info(f'Gathering metric data for {self.service_name}')
+
+        # Create info metric with version number of this script
+        self.i_exporter_version.labels(server=self.server_label, version=CURRENT_VERSION)
+
+        logging.info(f'Done fetching metrics for this polling interval for {self.service_name}')
+
 
 class MessagingServerAppMetrics:
     """
@@ -936,6 +983,10 @@ def _initialize_metric_classes(
 
     if not server_name_label:
         server_name_label = os.getenv('COMPUTERNAME', 'merge_pacs_unknown_server').lower()
+
+    exporter_self_metrics = ExporterSelfMetrics(metric_url=None, \
+        metric_server_label=server_name_label, metric_service_name=f'{sys.argv[0]} self metrics', metric_prefix='merge_pacs_exporter')
+    metric_class_objects.append(exporter_self_metrics)
 
     messaging_server_app_metrics = MessagingServerAppMetrics(metric_url=messaging_server_metric_url, \
         metric_server_label=server_name_label, metric_service_name='Messaging Server', metric_prefix='merge_pacs_msgs')
