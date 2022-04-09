@@ -14,14 +14,14 @@ Collects metrics data from the locally hosted pages that Merge PACS processes ex
 5) Install module pywin32
             * Note the "trusted-host" part may be required on servers because python doesn't recognize the HP SSL certificate that the NetScalers use for SSL inspection
 
-### Deployement Steps
+### Deployment Steps
 * Copy the updated script from GitLab to the K:\HPMetrics (shared as \\server\HPMetrics) folder on each server
-* From a local command prompt, run these command for each server (using your SA account in place of "YOUR_SA"): 
+* From a local command prompt, run these command for each server (using your SA account in place of "YOUR_SA" and replacing SERVER): 
 ```
-runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove" (this will error out if the service has NEVER run on this server before)
-runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install"
-runas \\server -u YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start"
-<need to set service to automatic>
+psexec \\SERVER -u healthpartners\YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove" (this will error out if the service has NEVER run on this server before)
+psexec \\SERVER -u healthpartnersYOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install"
+psexec \\SERVER -u healthpartnersYOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start"
+sc config HealthPartnersMetricsService start=Auto
 ```
 
 
