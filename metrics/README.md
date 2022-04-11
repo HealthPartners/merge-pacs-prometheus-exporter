@@ -16,11 +16,12 @@ Collects metrics data from the locally hosted pages that Merge PACS processes ex
 
 ### Deployment Steps
 * Copy the updated script from GitLab to the K:\HPMetrics (shared as \\server\HPMetrics) folder on each server
-* From a local command prompt, run these command for each server (using your SA account in place of "YOUR_SA" and replacing SERVER): 
+* From a command prompt on the target server, run these commands: 
 ```
-psexec \\SERVER -u healthpartners\YOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove" (this will error out if the service has NEVER run on this server before)
-psexec \\SERVER -u healthpartnersYOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install"
-psexec \\SERVER -u healthpartnersYOUR_SA "k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start"
+python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py stop     (this will error out if the service has NEVER run on this server before)
+python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove     (this will error out if the service has NEVER run on this server before)
+python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install
+python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start
 sc config HealthPartnersMetricsService start=Auto
 ```
 
