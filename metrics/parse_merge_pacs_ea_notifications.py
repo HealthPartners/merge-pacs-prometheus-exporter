@@ -1,3 +1,4 @@
+from logging.handlers import DEFAULT_HTTP_LOGGING_PORT
 import pandas as pd
 import requests
 from datetime import datetime
@@ -72,7 +73,8 @@ server_list = [
     'mergepacsrel',
 ]
 
-
+# Default seconds before giving up on attempted connections by requests.get(). See https://docs.python-requests.org/en/latest/user/quickstart/#timeouts.
+DEFAULT_HTTP_TIMEOUT = 2.0
 
 def get_all_merge_pacs_metrics():
     results = main()
@@ -1367,7 +1369,7 @@ def main():
             sess = requests.Session()
 
             login_url = f'https://{servername}/eaweb/login'
-            r = sess.get(login_url, verify=False)
+            r = sess.get(login_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
 
             # Raise an error if we get an "erorr" http status (e.g. 404)
             r.raise_for_status()
@@ -1386,7 +1388,7 @@ def main():
             }
 
 
-            post = sess.post(login_url, data=payload, verify=False)
+            post = sess.post(login_url, data=payload, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
             post.raise_for_status
         
 
@@ -1394,11 +1396,11 @@ def main():
 
             # Then this
             execute_jquery_url = f'https://{servername}/eaweb/monitoring/scheduledwork/getsummaryresult?componentName=&taskName=&status=&_filterByGroupFlag=on&_actionGroupsFlag=on&groupIdentifier=&selectedAction=&singleCheckedItem=&nextAttemptDate=03%2F23%2F2022&nextAttemptTime=13%3A50&_csrf={csrfToken}'
-            jquery_response = sess.get(execute_jquery_url, verify=False)
+            jquery_response = sess.get(execute_jquery_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
 
             # Note sure of the significance of the "draw=" argument to the function here. The page makes two calls with the value set to both 1 and 2. But setting it to 0 or ommitting it also seems to generate the same results.
             get_jquery_result_url = f'https://{servername}/eaweb/monitoring/scheduledwork/getsummarypaginationresults?draw=0&columns%5B0%5D.data=Select&columns%5B0%5D.name=&columns%5B0%5D.searchable=true&columns%5B0%5D.orderable=false&columns%5B0%5D.search.value=&columns%5B0%5D.search.regex=false&columns%5B1%5D.data=componentName&columns%5B1%5D.name=&columns%5B1%5D.searchable=true&columns%5B1%5D.orderable=true&columns%5B1%5D.search.value=&columns%5B1%5D.search.regex=false&columns%5B2%5D.data=taskName&columns%5B2%5D.name=&columns%5B2%5D.searchable=true&columns%5B2%5D.orderable=true&columns%5B2%5D.search.value=&columns%5B2%5D.search.regex=false&columns%5B3%5D.data=groupIdentifier&columns%5B3%5D.name=&columns%5B3%5D.searchable=true&columns%5B3%5D.orderable=true&columns%5B3%5D.search.value=&columns%5B3%5D.search.regex=false&columns%5B4%5D.data=status&columns%5B4%5D.name=&columns%5B4%5D.searchable=true&columns%5B4%5D.orderable=true&columns%5B4%5D.search.value=&columns%5B4%5D.search.regex=false&columns%5B5%5D.data=count&columns%5B5%5D.name=&columns%5B5%5D.searchable=true&columns%5B5%5D.orderable=false&columns%5B5%5D.search.value=&columns%5B5%5D.search.regex=false&order%5B0%5D.column=1&order%5B0%5D.dir=asc&start=0&length=50&search.value=&search.regex=false&_={current_unix_timestamp}'
-            get_jquery_result_result = sess.get(get_jquery_result_url, verify=False)
+            get_jquery_result_result = sess.get(get_jquery_result_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
             jsonResponse = get_jquery_result_result.json()
 
         except:
@@ -1426,5 +1428,6 @@ def main():
 
 if __name__ == "__main__":
     metrics_list = main()
-    sep = '\n'
-    print(sep.join(metrics_list))
+
+    for line in metrics_list:
+        print(line)
