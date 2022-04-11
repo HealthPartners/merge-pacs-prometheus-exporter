@@ -2,10 +2,10 @@
 * **merge_pacs_metric_to_prometheus_service.py** - Script that is meant to be installed and run as a service on each Merge PACS server. Provides a prometheus exporter that hosts data on port 7601 of the server itself.
 
 ## merge_pacs_metric_to_prometheus_service.py
-## Purpose
+### Purpose
 Collects metrics data from the locally hosted pages that Merge PACS processes expose and reformats the data into prometheus formatting. The script can be installed and run as a service so that it will continue functioning indefinitely. It starts its own web server that exposes the data on port 7601.
 
-## Prerequistes before first use
+### Prerequistes before first use
 0) Of course python must be installed. Install it for all users and choose the "Install py launcher" option.
 1) The prometheus_client package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client'
 2) The pandas package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pandas'
