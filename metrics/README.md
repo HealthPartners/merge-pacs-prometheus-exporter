@@ -6,13 +6,16 @@
 Collects metrics data from the locally hosted pages that Merge PACS processes expose and reformats the data into prometheus formatting. The script can be installed and run as a service so that it will continue functioning indefinitely. It starts its own web server that exposes the data on port 7601.
 
 ### Prerequistes before first use
-0) Of course python must be installed. Install it for all users and choose the "Install py launcher" option.
-1) The prometheus_client package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client'
-2) The pandas package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pandas'
-3) The requests package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org requests'
-4) The lxml package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org lxml'
-5) Install module pywin32
-            * Note the "trusted-host" part may be required on servers because python doesn't recognize the HP SSL certificate that the NetScalers use for SSL inspection
+1) Of course python must be installed. Install it for all users and choose the "Install py launcher" option.
+1) Install the required client packages:
+```
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pandas
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org requests
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org lxml
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pywin32
+```
+ \* Note the "trusted-host" part may be required on servers because python doesn't recognize the HP SSL certificate that the NetScalers use for SSL inspection
 
 ### Deployment Steps
 * Copy the updated script from GitLab to the K:\HPMetrics (shared as \\server\HPMetrics) folder on each server
