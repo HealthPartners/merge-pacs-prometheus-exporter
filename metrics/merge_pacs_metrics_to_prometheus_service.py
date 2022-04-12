@@ -22,13 +22,14 @@ Versions:
  3.0 - 03/25/22 - Updated to be able to start as a service (or not, using a "noservice" arguement), other improvements
  3.1 - 03/27/22 - Made a separate function to initialize metrics to be able to reuse it in both the "noservice" and regular methods of running
  3.2 - 04/08/22 - Add exporter info class to be able to export some info metrics about this process. Starting with just the version number of the exporter.
+ 3.3 - 04/12/22 - Add additional EA NP metrics for JMS sessions and active studies/images
  """
 
 from datetime import datetime
 import logging
 import os
 import pandas
-from prometheus_client import start_http_server, Gauge, Summary, Info
+from prometheus_client import start_http_server, Gauge, Summary, Info, Counter
 import re
 import requests
 import servicemanager
@@ -61,7 +62,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.2
+CURRENT_VERSION = 3.3
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 20
@@ -616,6 +617,18 @@ class EANotificationProcessorAppMetrics:
         self.g_memory_current = Gauge(f'{self.prefix}_memory_current', f'Current memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
         self.g_memory_peak = Gauge(f'{self.prefix}_memory_peak', f'Peak memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
 
+        self.g_active_studies = Gauge(f'{self.prefix}_active_studies', f'Studies currently being processed by the {self.service_name} service', ['server'])
+        self.g_studies_processed_total = Gauge(f'{self.prefix}_studies_processed_total', f'Number of studies processed since service startup by the {self.service_name} service', ['server'])
+        self.g_images_processed_total = Gauge(f'{self.prefix}_images_processed_total', f'Number of images processed since service startup by the {self.service_name} service', ['server'])
+
+        self.g_jms_sender_connection = Gauge(f'{self.prefix}_jms_sender_connection', f'Active JMS sender connections in use by the {self.service_name} service', ['server'])
+        self.g_jms_receiver_connection = Gauge(f'{self.prefix}_jms_receiver_connection', f'Active JMS receiver connections in use by the {self.service_name} service', ['server'])
+        self.g_jms_sender_sessions = Gauge(f'{self.prefix}_jms_sender_sessions', f'Active JMS sender sessions in use by the {self.service_name} service', ['server'])
+        self.g_jms_receiver_sessions = Gauge(f'{self.prefix}_jms_receiver_sessions', f'Active JMS receiver sessions in use by the {self.service_name} service', ['server'])
+
+        self.g_active_studies_idletime_max = Gauge(f'{self.prefix}_studies_idletime_max', f'Max idle time of all studies currently active in the {self.service_name} service', ['server'])
+        self.g_active_studies_idletime_avg = Gauge(f'{self.prefix}_studies_idletime_avg', f'Average idle time of all studies currently active in the {self.service_name} service', ['server'])
+        
         self.g_received_notifications = Gauge(f'{self.prefix}_received_notifications', f'Notifications received from the EA by the {self.service_name} service in Merge PACS since last service restart', \
             ['server', 'notificationType'])
         self.g_jobs_constructed = Gauge(f'{self.prefix}_jobs_constructed', f'Jobs constructed recently(?) by the {self.service_name} service', ['server'])
@@ -650,24 +663,30 @@ class EANotificationProcessorAppMetrics:
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
             ### Parse active and idle database connections
-            # self._parse_database_connections(r.text)
             _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
 
             ### Parse service uptime
-            # self._parse_service_uptime(r.text)
             _parse_service_uptime(service_uptime_metric_obj=self.g_service_uptime, server_label=self.server_label, metrics_html=r.text)
 
             ### Parse memory utilization
-            # self._parse_memory_utilization(r.text)
             _parse_memory_utilization(memory_current_metric_obj=self.g_memory_current, memory_peak_metric_obj=self.g_memory_peak, \
                 server_label=self.server_label, metrics_html=r.text)
 
             ### Received notifications 
             self._parse_received_notifications(r.text)
 
-            ### Received notifications
+            ### Received notification manager jobs counts data
             self._parse_notification_manager(r.text)
 
+            ### Parse active studies counts
+            self._parse_active_studies_counts(r.text)
+
+            ### Parse JMS sender and receiver counts
+            self._parse_jms_connection_counts(r.text)
+            
+            ### Parse active studies idle time stats
+            self._parse_active_studies_idle_times(r.text)
+            
         logging.info(f'Done fetching metrics for this polling interval for {self.service_name}')
 
     def _parse_received_notifications(self, metrics_html):
@@ -746,6 +765,77 @@ class EANotificationProcessorAppMetrics:
                     this_metric_obj.labels(server=self.server_label).set(column_val)      
                 
             logging.info(f'  Metrics created for notification manager')
+
+    def _parse_active_studies_counts(self, metrics_html):
+        logging.info(f'  Parsing text for active studies and images metrics')
+        try:
+            # Parse active studies and number of images and studies processed since startup
+            #Example: <DIV CLASS="ActiveStudiesAndImages">Active studies:<B>31</B>,&nbsp;Processed since startup:<B>3790756</B> images / <B>51263</B> studies
+            match = re.search(r'Active studies:<B>(?P<active_studies>\d*)<\/B>.*Processed since startup:<B>(?P<images_processed>\d*)<\/B> images \/ <B>(?P<studies_processed>\d*)<\/B> studies', metrics_html)
+
+            active_studies = int(match.group('active_studies'))
+            images_processed = int(match.group('images_processed'))
+            studies_processed = int(match.group('studies_processed'))
+
+            # Convert Start Time column in to Python datetime
+            # table_df['Start Time'] = pandas.to_datetime(table_df['Start Time'])
+        except:
+            logging.warning(f'  Failed to parse active studies and images counts. Not creating metrics.')
+            logging.raiseExceptions
+        else:
+            self.g_active_studies.labels(server=self.server_label).set(active_studies)
+            self.g_studies_processed_total.labels(server=self.server_label).set(studies_processed)
+            self.g_images_processed_total.labels(server=self.server_label).set(images_processed)
+                
+            logging.info(f'  Metrics created for active studies and images counts')
+
+    def _parse_jms_connection_counts(self, metrics_html):
+        logging.info(f'  Parsing text for JMS connection metrics')
+        try:
+            # Parse JMS sender and receiver connection counts
+            # EXAMPLE: <p><p><p><b>INTERNAL JMS Manager</b></p>Sender connection: 1<br>Receiver connection: 1<p/>...
+            match = re.search(r'INTERNAL JMS Manager.*Sender connection: (?P<jms_sender_connection>\d+)<br>Receiver connection: (?P<jms_receiver_connection>\d+)', metrics_html)
+
+            jms_sender_connection = match.group('jms_sender_connection')
+            jms_receiver_connection = match.group('jms_receiver_connection')
+        except:
+            logging.warning(f'  Failed to parse JMS connection counts counts. Not creating metrics.')
+            logging.raiseExceptions
+        else:
+            self.g_jms_sender_connection.labels(server=self.server_label).set(jms_sender_connection)
+            self.g_jms_receiver_connection.labels(server=self.server_label).set(jms_receiver_connection)
+        
+        try:
+            # Parse JMS sender and receiver session counts
+            match = re.search(r'JMS Sender Sessions\((?P<jms_sender_sessions>\d*)\)', metrics_html)
+            jms_sender_sessions = match.group('jms_sender_sessions')
+
+            match = re.search(r'Receiver Sessions</b>\((?P<jms_receiver_sessions>\d*)\)', metrics_html)
+            jms_receiver_sessions = match.group('jms_receiver_sessions')
+        except:
+            logging.warning(f'  Failed to parse JMS session counts. Not creating metrics.')
+            logging.raiseExceptions
+        else:
+            self.g_jms_sender_sessions.labels(server=self.server_label).set(jms_sender_sessions)
+            self.g_jms_receiver_sessions.labels(server=self.server_label).set(jms_receiver_sessions)
+
+            logging.info(f'  Metrics created for JMS sender and receiver notifications')
+
+    def _parse_active_studies_idle_times(self, metrics_html):
+        logging.info(f'  Parsing active studies idle times metrics')
+        try:
+            # Parse JMS sender and receiver connection counts
+            table_dfs = pandas.read_html(metrics_html, match='Patient Name', header=0)
+            table_df = table_dfs[0] # There should only be one matching table anyway, but take the first one anyway
+            max_time = table_df['Idle Time'].max()
+            mean_time = table_df['Idle Time'].mean()
+        except:
+            logging.warning(f'  Failed to parse column name and values for average and max idle times')
+        else:
+            self.g_active_studies_idletime_max.labels(server=self.server_label).set(max_time)
+            self.g_active_studies_idletime_avg.labels(server=self.server_label).set(mean_time)
+            logging.info(f'  Metrics created for JMS sender and receiver notifications')
+
 
 class SchedulerAppMetrics:
     """
