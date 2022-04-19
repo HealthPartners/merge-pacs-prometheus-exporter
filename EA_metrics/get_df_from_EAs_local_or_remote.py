@@ -81,14 +81,10 @@ peers_and_servers = {
         'clarc06',
     ],
     'mergeeatest' : [
-        'mergeeatest',  # this is the combined elb/clarc node.. maybe?
-        'rcs01',
-        'rcs02',
+        'mergeeatest',  # this is the combined elb/clarc/rcs01/rcs02 node
     ],
     'mergeeatestcnt' : [
-        'mergeeatestcnt',  # this is the combined elb/clarc node.. maybe?
-        'rcs01',
-        'rcs02',
+        'mergeeatestcnt',  # this is the combined elb/clarc/rcs01/rcs02 node
     ]
 }
 
