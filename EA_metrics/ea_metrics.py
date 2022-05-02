@@ -17,9 +17,11 @@ Prerequisites:
 
 Deployment:
 * Copy all files to ~/hpmetrics and update any that are already there with the new versions
+* Give permissions to allow run_metrics.sh to be executed if it is newly created:
+        chmod u+x ~/hpmetrics/run_metrics.sh
 
 Running the metrics collection:
-* run ~/hpmetrics/run_metrics.sh
+* ~/hpmetrics/run_metrics.sh
 
 Also, see this page from where I stole the class format used here: https://trstringer.com/quick-and-easy-prometheus-exporter/
 
@@ -28,6 +30,7 @@ NOTE This is written for Python 2.7 which is what's on the EAs.
 Created: 4/24/2022
 Versions:
  1.0 - 4/24/22 - created by Ben
+ 1.1 - 5/2/22  - Revision to exclude tmpfs and devtmpfs filesystems from disk utilization metrics
  """
 
 from contextlib import closing
@@ -45,7 +48,7 @@ import time
 ##
 
 # Current software version
-CURRENT_VERSION = 1.0
+CURRENT_VERSION = 1.1
 
 # SSH client username and password to connect to each of the EA peers
 # You can define it here if you must. Better still, you can define it in environmental variables before running the script. But the
@@ -151,7 +154,7 @@ class DiskUtilizationMetrics:
             if ssh_conn:
                 try:
                     #time.sleep(0.1) # I don't know what we need to do this but if there isn't a small delay every other exec_command will fail with an error like: "Secsh channel 3 open FAILED: open failed: Connect failed"
-                    df_command = 'df --portability --local'
+                    df_command = 'df --portability --local --exclude-type=tmpfs --exclude-type=devtmpfs'
                     logging.info('  Running command "%s" to collect df data from server %s' % (df_command,server))
                     stdin, stdout, stderr = ssh_conn.exec_command(df_command)
                 except SSHException as sshe:
