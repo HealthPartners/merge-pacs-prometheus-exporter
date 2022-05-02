@@ -135,9 +135,6 @@ class DiskUtilizationMetrics:
         #logging.info('Initializing metric: merge_ea_filesystem_size_total_bytes')
         #self.g_available_bytes = Gauge('merge_ea_filesystem_size_available_bytes', 'Total bytes available on this filesystem', metric_labels)
 
-        logging.info('Initializing metric: merge_ea_filesystem_size_used_perc')
-        self.g_used_perc = Gauge('%s_size_used_perc' % metric_prefix, 'Percentage of available capacity in use on this filesystem', metric_labels)
-
     def fetch(self):
         """ 
         Use paramiko to conect to each clarc server via ssh and execute df commands directly to each server
@@ -174,7 +171,6 @@ class DiskUtilizationMetrics:
                             mount_point = match.group('mounted_on')
                             used_bytes = float(match.group('used_KB')) * 1024
                             available_bytes = float(match.group('available_KB')) * 1024
-                            used_perc = round((used_bytes / total_bytes) * 100, 2)  # Choosing to calculate this here rather than use the pattern match so we get 2 decimals of accuracy rather than the df command's rounding
                             filesystem = match.group('filesystem')
 
                             # Populate metrics
@@ -187,9 +183,6 @@ class DiskUtilizationMetrics:
 
                             # Bytes in use on the filesystem
                             #self.g_available_bytes.labels(peer,server,mount_point,filesystem).set(available_bytes)
-
-                            # Bytes in use on the filesystem
-                            self.g_used_perc.labels(peer=self.peer_name, server=server, mount=mount_point, filesystem=filesystem).set(used_perc)
 
                 # Because they are file objects, they need to be closed after reading from all servers before connecting to the next peer
                 stdin.close()
