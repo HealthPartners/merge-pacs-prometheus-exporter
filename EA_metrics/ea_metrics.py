@@ -30,7 +30,8 @@ NOTE This is written for Python 2.7 which is what's on the EAs.
 Created: 4/24/2022
 Versions:
  1.0 - 4/24/22 - created by Ben
- 1.1 - 5/2/22  - Revision to exclude tmpfs and devtmpfs filesystems from disk utilization metrics
+ 1.1 - 5/2/22  - Revision to exclude tmpfs and devtmpfs filesystems from disk utilization metrics; fix disk utilization pattern match
+                 to capture /dev/mapper... volumes, too
  """
 
 from contextlib import closing
@@ -120,7 +121,7 @@ class DiskUtilizationMetrics:
         #   /dev/sda6                          4190208    2114084    2076124  51% /var
         #   /dev/mapper/vg00-lv_emageon       35575808    8369020   27206788  24% /opt/emageon
         #   192.168.249.49:/vol/backup      2147483648  910542016 1236941632  43% /opt/emageon/backup
-        self.df_pattern = re.compile('^(?P<filesystem>[\w\.\:\/]+)\s+(?P<total_KB>\d+)\s+(?P<used_KB>\d+)\s+(?P<available_KB>\d+)\s+(?P<used_perc>\d+)\%\s(?P<mounted_on>[\w\/]+)')
+        self.df_pattern = re.compile('^(?P<filesystem>[\w\d\-\/]+)\s+(?P<total_KB>\d+)\s+(?P<used_KB>\d+)\s+(?P<available_KB>\d+)\s+(?P<used_perc>\d+)\%\s(?P<mounted_on>[\w\/]+)')
 
         # Define labels to use for each of the metrics (order is important)
         metric_labels = ["peer","server","mount","filesystem"]
