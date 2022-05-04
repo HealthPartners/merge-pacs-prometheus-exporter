@@ -7,9 +7,10 @@ Prerequisites:
   0) Test if pip is installed with 'python -m pip --version'. If not, install pip:
      > curl -sSL https://bootstrap.pypa.io/pip/2.7/get-pip.py --insecure -o get-pip.py
      > python get-pip.py --trusted-host pypi.org --trusted-host files.pythonhosted.org
-  1) The paramiko package must be installed with 'python -m pip --trusted-host pypi.org --trusted-host files.pythonhosted.org install paramiko'
-  2) The prometheus_client package must be installed with 'python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client'
-  3) You MUST be able to SSH from the initial server (elb01 or elb02) to ALL other servers in the peer without requiring
+  1) The python packages paramiko, prometheus_client, and requests must be installed. Assuming you're not running as root, they can be installed for
+     the local user. Run the following to installed (and ignore our web filter's self-signed certificate):
+        python -m pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org --user paramiko prometheus_client requests
+  2) You MUST be able to SSH from the initial server (elb01 or elb02) to ALL other servers in the peer without requiring
       a password. You can do with with shared SSH keys. From both elb servers, do:
           > ssh-keygen -t rsa -b 2048
       then on each elb, execute this command for each server in the peer (including BOTH elb servers, even the one you're on)
@@ -32,6 +33,7 @@ Versions:
  1.0 - 4/24/22 - created by Ben
  1.1 - 5/2/22  - Revision to exclude tmpfs and devtmpfs filesystems from disk utilization metrics; fix disk utilization pattern match
                  to capture /dev/mapper... volumes, too
+ 1.2 - 5/4/22  - Add collection of SWE metrics from web admin here (previously it was on the cdsmi server's Merge PACS script)
  """
 
 from contextlib import closing
@@ -40,6 +42,8 @@ import os
 from paramiko import AuthenticationException, AutoAddPolicy, WarningPolicy, BadHostKeyException, ChannelException, SSHException, SSHClient
 from prometheus_client import start_http_server, Gauge, Info
 import re
+import requests
+import requests.exceptions
 import socket
 import sys
 import time
@@ -49,19 +53,29 @@ import time
 ##
 
 # Current software version
-CURRENT_VERSION = 1.1
-
-# SSH client username and password to connect to each of the EA peers
-# You can define it here if you must. Better still, you can define it in environmental variables before running the script. But the
-# best idea is just to copy your shared SSH key to every target do you don't need to use a username and password.
-# EA_USERNAME = None
-# EA_PASSWORD = None
+CURRENT_VERSION = 1.2
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 60
 
 # What port this application should host the local http output on (default is 8080)
 HOSTING_PORT = 7601
+
+# SSH client username and password to connect to each of the EA peers
+# You can define it here if you must. Better still, you can define it in environmental variables before running the script. But the
+# best idea is just to copy your shared SSH key to every target do you don't need to use a username and password for that part. But
+# you will still need it defined if you're going to log in to the EA web admin to scrape the SWE sizes. getenv returns a "None" value
+# the the environment variable is not present.
+SSH_USERNAME = os.getenv('SSH_USERNAME')
+SSH_PASSWORD = os.getenv('SSH_PASSWORD')
+EAWEB_USERNAME = os.getenv('EAWEB_USERNAME')
+EAWEB_PASSWORD = os.getenv('EAWEB_PASSWORD')
+
+if EAWEB_USERNAME is None or EAWEB_PASSWORD is None:
+    logging.error('The username and password to use to authenticate to EA Web are not defined correctly! This will probably prevent the SWE metrics from being collected.')
+
+# How long we should wait for an HTTP connection attempt to be successful before failing, in seconds
+DEFAULT_HTTP_TIMEOUT = 2.0
 
 # Set logging parameters
 # Change level to print more or fewer debugging messages
@@ -147,7 +161,7 @@ class DiskUtilizationMetrics:
             logging.info('  Attempting to collect data from server %s' % server)
 
             # Connect to the server and returns the Paramiko SSHClient object
-            ssh_conn = _connect_to_ssh(target_host=server,  username=os.getenv('EA_USERNAME'), password=os.getenv('EA_PASSWORD'))    # Use environment variables for username and password, if present
+            ssh_conn = _connect_to_ssh(target_host=server, username=SSH_USERNAME, password=SSH_PASSWORD)    # Use environment variables for username and password, if present
 
             if ssh_conn:
                 try:
@@ -343,11 +357,135 @@ class MulticasterMetrics:
 
         logging.info('Done fetching metrics for this polling interval for %s' % self.service_description)
 
+class ScheduledWorkEngineMetrics:
+    """
+    Functions to monitor the size of each of the peer's scheduled work engine queues:
+    * Initialize the class and define each metric that we're going to collect
+    * Get the data from the source application metric page
+    * Helper functions for formatting each type of metric to make code more readable
+    """
 
-def _initialize_metric_classes(peer_name, server_list):
+    def __init__(self, peer_name=None, metric_prefix='merge_ea_unk', metric_service_description="service name", server_list=[], peer_domain='healthpartners.com'):
+        logging.info('Initializing the {} metric data class'.format(metric_service_description))
+
+        # The name of the current peer (the VIP hostname)
+        self.peer_name = peer_name
+ 
+        # What is the prefix string all these metrics will share? (Don't end in "_" -- one will be added)
+        self.prefix = metric_prefix
+
+        # The description of the server
+        self.service_description = metric_service_description
+
+        # List of all servers in this peer
+        self.server_list = server_list
+
+        # Domain for this peer (the VIP domain name). Some peers don't recognize the "peer name" as a valid network address without the FQDN
+        self.peer_domain = peer_domain
+
+        self.peer_fqdn = '{0}.{1}'.format(peer_name, peer_domain)
+
+        # Define the unique metrics to collect (labels will be added later)
+        self.g_queue_size = Gauge('{}_queue_size'.format(self.prefix),
+            'The number of notifications waiting to be sent to Merge PACS by the scheduled work engine, grouped by component name and task type',
+            ['peer', 'component_name', 'task_name', 'status']
+        )
+
+    def fetch(self):
+        """ 
+        Collect the size of the SWE queues for the peer. The only good way to do this (since we can't query the DB directly) is 
+        scrape the webadmin page and use its jquery response. This means we have to be able to log in to the webadmin page using
+        a valid username and password.
+        """
+        logging.info('Starting to collect {} metric data from server(s) on this peer'.format(self.service_description))
+
+        sess = requests.Session()
+
+        login_url = 'https://{}/eaweb/login'.format(self.peer_fqdn)
+
+        try:
+            logging.info('   Getting EA web admin login page')
+            r = sess.get(login_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
+            r.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            logging.error('HTTP status error when attempting to open the EA web admin login page! ({})'.format(login_url))
+            logging.raiseExceptions
+        except requests.exceptions.Timeout as err:
+            logging.error('HTTP timeout when attempting to open the EA web admin login page! ({})'.format(login_url))
+            logging.raiseExceptions
+            # Maybe set up for a retry, or continue in a retry loop
+        except requests.exceptions.RequestException as e:
+            logging.error('HTTP error when attempting to open the EA web admin login page ({0}): {1}'.format(login_url, e))
+            logging.raiseExceptions
+
+        # Parse content and get the hidden _csrf token from the login page raw html text
+        pattern = re.compile(r'<input type="hidden" name="_csrf" value="(?P<csrf>[\d\w\-]+)" />')
+        match = re.search(pattern, r.text)
+        csrf_token = match.group('csrf')
+
+        # Contruct login form submission payload
+        payload = {
+            'username' : EAWEB_USERNAME,
+            'password': EAWEB_PASSWORD,
+            'ldapDomain': '1',       # Assume that 'healthpartners.int' is the only option other than Local
+            '_csrf': csrf_token
+        }
+
+        try:
+            # Do not verify certificates because the EA's are self-signed
+            logging.info('   Authenticating to EA web admin')
+            post = sess.post(login_url, data=payload, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
+            post.raise_for_status
+        except requests.exceptions.HTTPError as e:
+            logging.error('HTTP status error when attempting to log in to EA web admin ({0}): {1}'.format(login_url, e.response.text))
+            logging.raiseExceptions
+        except requests.exceptions.RequestException as e:
+            logging.error('HTTP error when attempting to log in to EA web admin ({0}): {1}'.format(login_url, e))
+            logging.raiseExceptions
+
+
+        # Execute this call first to prepare results even though we don't use the response directly
+        execute_jquery_url = 'https://{0}/eaweb/monitoring/scheduledwork/getsummaryresult?componentName=&taskName=&status=&_filterByGroupFlag=on&_actionGroupsFlag=on&groupIdentifier=&selectedAction=&singleCheckedItem=&nextAttemptDate=03%2F23%2F2022&nextAttemptTime=13%3A50&_csrf={1}' \
+            .format(self.peer_fqdn, csrf_token)
+        logging.info('   Starting query of SWE status data')
+        try:            
+            jquery_response = sess.get(execute_jquery_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
+            jquery_response.raise_for_status
+        except requests.exceptions.HTTPError as e:
+            logging.error('HTTP status error when attempting to prepare jquery: {}'.format(e.response.text))
+            logging.raiseExceptions
+        except requests.exceptions.RequestException as e:
+            logging.error('HTTP error when attempting to prepare jquery: {}'.format(e))
+            logging.raiseExceptions
+
+        # Note sure of the significance of the "draw=" argument to the function here. The page makes two calls with the value set to both 1 and 2. But setting it to 0 or ommitting it also seems to generate the same results.
+        current_unix_timestamp = int(time.time()*1000)
+        get_jquery_result_url = 'https://{0}/eaweb/monitoring/scheduledwork/getsummarypaginationresults?draw=0&columns%5B0%5D.data=Select&columns%5B0%5D.name=&columns%5B0%5D.searchable=true&columns%5B0%5D.orderable=false&columns%5B0%5D.search.value=&columns%5B0%5D.search.regex=false&columns%5B1%5D.data=componentName&columns%5B1%5D.name=&columns%5B1%5D.searchable=true&columns%5B1%5D.orderable=true&columns%5B1%5D.search.value=&columns%5B1%5D.search.regex=false&columns%5B2%5D.data=taskName&columns%5B2%5D.name=&columns%5B2%5D.searchable=true&columns%5B2%5D.orderable=true&columns%5B2%5D.search.value=&columns%5B2%5D.search.regex=false&columns%5B3%5D.data=groupIdentifier&columns%5B3%5D.name=&columns%5B3%5D.searchable=true&columns%5B3%5D.orderable=true&columns%5B3%5D.search.value=&columns%5B3%5D.search.regex=false&columns%5B4%5D.data=status&columns%5B4%5D.name=&columns%5B4%5D.searchable=true&columns%5B4%5D.orderable=true&columns%5B4%5D.search.value=&columns%5B4%5D.search.regex=false&columns%5B5%5D.data=count&columns%5B5%5D.name=&columns%5B5%5D.searchable=true&columns%5B5%5D.orderable=false&columns%5B5%5D.search.value=&columns%5B5%5D.search.regex=false&order%5B0%5D.column=1&order%5B0%5D.dir=asc&start=0&length=50&search.value=&search.regex=false&_={1}' \
+            .format(self.peer_fqdn, current_unix_timestamp)
+        try:
+            get_jquery_result_response = sess.get(get_jquery_result_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
+            get_jquery_result_response.raise_for_status
+        except requests.exceptions.HTTPError as e:
+            logging.error('HTTP status error when attempting to get jquery response: {}'.format(e.response.text))
+            logging.raiseExceptions
+        except requests.exceptions.RequestException as e:
+            logging.error('HTTP error when attempting to get jquery response:{}'.format(e))
+            logging.raiseExceptions
+
+        jsonResponse = get_jquery_result_response.json()
+        for data_item in jsonResponse['data']:
+            self.g_queue_size.labels(peer=self.peer_name, component_name=data_item['componentName'], task_name=data_item["taskName"], status=data_item["status"]).set(data_item["count"])
+
+        logging.info('Done fetching metrics for this polling interval for %s' % self.service_description)
+
+
+def _initialize_metric_classes(peer_name, peer_domain, server_list):
     """
     Initialize each of the promtheus_client classes for each of the metrics we're going to collect. 
-    Arguments: The name of the peer we're collecting data for
+    Arguments: 
+        * The name of the peer (the VIP hostname) we're collecting data for
+        * The domain of the peer (the VIP domain) we're collecting data for
+        * A list of all servers (elb, rcs, clarc) in this peer
     Returns: A list of class objects initialized. Use these objects to call the fetch() method for each one to 
         populate the registry with metric values.
     """
@@ -372,6 +510,11 @@ def _initialize_metric_classes(peer_name, server_list):
     metric_class_objects.append(
         MulticasterMetrics(peer_name=peer_name, metric_prefix='merge_ea_multicaster', metric_service_description='multicaster', server_list=server_list)
     )
+
+    metric_class_objects.append(
+        ScheduledWorkEngineMetrics(peer_name=peer_name, metric_prefix='merge_ea_scheduledworkengine', metric_service_description='scheduled work engine', server_list=server_list, peer_domain=peer_domain)
+    )
+    
     return metric_class_objects
 
 def _connect_to_ssh(target_host, username, password, look_for_keys=True, set_missing_host_key_policy=WarningPolicy):
@@ -479,12 +622,13 @@ def main():
         logging.info('No argument provided on command line. Will read system name from emageon.conf.')
         vip_hostname, vip_domainname, vip_ip, vip_netmask_bits, vip_gateway = _get_netinfo(configuration_vars)
         peer_name = vip_hostname
+        peer_domain = vip_domainname
 
     # Generate a list of servers in this peer
     all_servers_list = _get_servers_in_peer(configuration_vars=configuration_vars)
 
     # Initialize new classes to set up all of the class definitions, define the metrics, etc.
-    metric_objects = _initialize_metric_classes(peer_name=peer_name, server_list=all_servers_list)
+    metric_objects = _initialize_metric_classes(peer_name=peer_name, peer_domain=peer_domain, server_list=all_servers_list)
 
     # Start up the http mini-server
     logging.info('Starting http server on port %s' % HOSTING_PORT)
