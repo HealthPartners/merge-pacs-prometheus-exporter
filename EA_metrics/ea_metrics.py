@@ -34,6 +34,9 @@ Versions:
  1.1 - 5/2/22  - Revision to exclude tmpfs and devtmpfs filesystems from disk utilization metrics; fix disk utilization pattern match
                  to capture /dev/mapper... volumes, too
  1.2 - 5/4/22  - Add collection of SWE metrics from web admin here (previously it was on the cdsmi server's Merge PACS script)
+ 1.3 - 5/4/22  - Add a .clear() to the collection process for SWE. When there is no data for a combination of labels the gauge will
+                 continue to report the most recent value instead of 0 or null. This resets it each time which is necessary since the
+                 jquery output won't have any at all when a particular component/task combo has no messages in queue.
  """
 
 from contextlib import closing
@@ -53,7 +56,7 @@ import time
 ##
 
 # Current software version
-CURRENT_VERSION = 1.2
+CURRENT_VERSION = 1.3
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 60
@@ -473,6 +476,11 @@ class ScheduledWorkEngineMetrics:
             logging.raiseExceptions
 
         jsonResponse = get_jquery_result_response.json()
+
+        # Clear out the gague metric's previous labels and values. Otherwise if there's no data in this scrape for a particular label combination
+        # gague will just report out the most recent value. That's not exactly what we want.
+        self.g_queue_size.clear()
+
         for data_item in jsonResponse['data']:
             self.g_queue_size.labels(peer=self.peer_name, component_name=data_item['componentName'], task_name=data_item["taskName"], status=data_item["status"]).set(data_item["count"])
 
