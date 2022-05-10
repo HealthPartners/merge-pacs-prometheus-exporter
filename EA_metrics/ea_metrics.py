@@ -438,9 +438,9 @@ class ScheduledWorkEngineMetrics:
             # Do not verify certificates because the EA's are self-signed
             logging.info('   Authenticating to EA web admin')
             post = sess.post(login_url, data=payload, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
-            post.raise_for_status
+            post.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            logging.error('HTTP status error when attempting to log in to EA web admin ({0}): {1}'.format(login_url, e.response.text))
+            logging.error('HTTP status error when attempting to log in to EA web admin ({0}): {1}'.format(login_url, e.response.status))
             logging.raiseExceptions
         except requests.exceptions.RequestException as e:
             logging.error('HTTP error when attempting to log in to EA web admin ({0}): {1}'.format(login_url, e))
@@ -453,9 +453,9 @@ class ScheduledWorkEngineMetrics:
         logging.info('   Starting query of SWE status data')
         try:            
             jquery_response = sess.get(execute_jquery_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
-            jquery_response.raise_for_status
+            jquery_response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            logging.error('HTTP status error when attempting to prepare jquery: {}'.format(e.response.text))
+            logging.error('HTTP status error when attempting to prepare jquery: {}'.format(e.response.status))
             logging.raiseExceptions
         except requests.exceptions.RequestException as e:
             logging.error('HTTP error when attempting to prepare jquery: {}'.format(e))
@@ -467,9 +467,9 @@ class ScheduledWorkEngineMetrics:
             .format(self.peer_fqdn, current_unix_timestamp)
         try:
             get_jquery_result_response = sess.get(get_jquery_result_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
-            get_jquery_result_response.raise_for_status
+            get_jquery_result_response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            logging.error('HTTP status error when attempting to get jquery response: {}'.format(e.response.text))
+            logging.error('HTTP status error when attempting to get jquery response: {}'.format(e.response.status))
             logging.raiseExceptions
         except requests.exceptions.RequestException as e:
             logging.error('HTTP error when attempting to get jquery response:{}'.format(e))
