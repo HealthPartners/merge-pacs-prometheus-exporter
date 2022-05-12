@@ -4,8 +4,7 @@ import requests
 from datetime import datetime
 from datetime import timedelta
 import re
-from bs4 import BeautifulSoup
-import time
+import socket
 
 # Definitions for the Notification Manager table of data
 # Associate prometheus metric key to the appropriate column header in the data table. We're expecting a table like this:
@@ -183,6 +182,15 @@ def get_other_metrics(url_text):
     
     
     return metrics_dict
+
+def getHost(ip):
+    try:
+        data = socket.gethostbyaddr(ip)
+        host = repr(data[0])
+        return host
+    except Exception:
+        # fail gracefully
+        return False
 
 
 def main():
@@ -1352,67 +1360,48 @@ def main():
                 worklistRequest = u.group('WorklistRequest')
                 output_list.append(f'merge_pacs_msgs_msgs_message_count{{server="{servername}",QueueType="worklistreq"}} {worklistRequest}')
 
-    # List of servers to check for status data For Appliction server
-        server_list_8 = [
-                'mergeeasec',
-                'mergeeapri',
-                'mergeeatest',
-                'mergeeatestcnt',
-        ]
 
-    for servername in server_list_8:
-        try:
-        
-            APP_USERNAME = 'merge'
-            APP_PASSWORD = 'H3@lthp@rtn3rsP@C5'
+    #EA and PACS Active systems
+    x = "medimgarchive.healthpartners.com"
+    y = "pacsprod.healthpartners.com"
+    #caluclation
+    ea_fqdn_peera = "'mergeeapri.healthpartners.com'"
+    mergepacs_fqdn_peera = "'mergepacsprd.healthpartners.com'"
+    ea_fqdn_peerb = "'mergeeasec.healthpartners.com'"
+    mergepacs_fqdn_peerb = "'mergepacscnt.healthpartners.com'"
 
-            sess = requests.Session()
+    active_ea_hostname = getHost(x)
+    active_mergepacs_hostname = getHost(y)
 
-            login_url = f'https://{servername}/eaweb/login'
-            r = sess.get(login_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
-
-            # Raise an error if we get an "erorr" http status (e.g. 404)
-            r.raise_for_status()
-
-
-            # Parse content and get the hidden _csrf token
-            soup=BeautifulSoup(r.content)
-            csrfToken = soup.find("input",{"name":"_csrf"})['value']
-
-            # Contruct login form submission payload
-            payload = {
-                'username' : APP_USERNAME,
-                'password':APP_PASSWORD,
-                'ldapDomain':'1',       # Assume that 'healthpartners.int' is the only option other than Local
-                '_csrf': csrfToken
-            }
+    # Get current active EA peer
+    if active_ea_hostname == ea_fqdn_peera :
+        pri_ea_number = "1"
+        sec_ea_number = "0"
+    elif active_ea_hostname == ea_fqdn_peerb :
+        pri_ea_number = "0"
+        sec_ea_number = "1"
 
 
-            post = sess.post(login_url, data=payload, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
-            post.raise_for_status
-        
+    # Get current active Merge PACS peer
+    if active_mergepacs_hostname == mergepacs_fqdn_peera :
+        prd_pacs_number = "1"
+        cnt_pacs_number = "0"
+    elif active_mergepacs_hostname == mergepacs_fqdn_peerb :
+        prd_pacs_number = "0"
+        cnt_pacs_number = "1"
 
-            current_unix_timestamp = int(time.time()*1000)
 
-            # Then this
-            execute_jquery_url = f'https://{servername}/eaweb/monitoring/scheduledwork/getsummaryresult?componentName=&taskName=&status=&_filterByGroupFlag=on&_actionGroupsFlag=on&groupIdentifier=&selectedAction=&singleCheckedItem=&nextAttemptDate=03%2F23%2F2022&nextAttemptTime=13%3A50&_csrf={csrfToken}'
-            jquery_response = sess.get(execute_jquery_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
 
-            # Note sure of the significance of the "draw=" argument to the function here. The page makes two calls with the value set to both 1 and 2. But setting it to 0 or ommitting it also seems to generate the same results.
-            get_jquery_result_url = f'https://{servername}/eaweb/monitoring/scheduledwork/getsummarypaginationresults?draw=0&columns%5B0%5D.data=Select&columns%5B0%5D.name=&columns%5B0%5D.searchable=true&columns%5B0%5D.orderable=false&columns%5B0%5D.search.value=&columns%5B0%5D.search.regex=false&columns%5B1%5D.data=componentName&columns%5B1%5D.name=&columns%5B1%5D.searchable=true&columns%5B1%5D.orderable=true&columns%5B1%5D.search.value=&columns%5B1%5D.search.regex=false&columns%5B2%5D.data=taskName&columns%5B2%5D.name=&columns%5B2%5D.searchable=true&columns%5B2%5D.orderable=true&columns%5B2%5D.search.value=&columns%5B2%5D.search.regex=false&columns%5B3%5D.data=groupIdentifier&columns%5B3%5D.name=&columns%5B3%5D.searchable=true&columns%5B3%5D.orderable=true&columns%5B3%5D.search.value=&columns%5B3%5D.search.regex=false&columns%5B4%5D.data=status&columns%5B4%5D.name=&columns%5B4%5D.searchable=true&columns%5B4%5D.orderable=true&columns%5B4%5D.search.value=&columns%5B4%5D.search.regex=false&columns%5B5%5D.data=count&columns%5B5%5D.name=&columns%5B5%5D.searchable=true&columns%5B5%5D.orderable=false&columns%5B5%5D.search.value=&columns%5B5%5D.search.regex=false&order%5B0%5D.column=1&order%5B0%5D.dir=asc&start=0&length=50&search.value=&search.regex=false&_={current_unix_timestamp}'
-            get_jquery_result_result = sess.get(get_jquery_result_url, verify=False, timeout=DEFAULT_HTTP_TIMEOUT)
-            jsonResponse = get_jquery_result_result.json()
+    #print Results in format
+    output_list.append(f'# HELP active_nodes active server in both ea and pacs')
+    output_list.append(f'# TYPE active_nodes gauge')
+    output_list.append(f'active_ea_node_info{{Server="mergeeapri"}} {pri_ea_number}')
+    output_list.append(f'active_ea_node_info{{Server="mergeeasec"}} {sec_ea_number}')
+    output_list.append(f'active_mergepacs_node_info{{Server="mergepacsprd"}} {prd_pacs_number}')
+    output_list.append(f'active_mergepacs_node_info{{Server="mergepacscnt"}} {cnt_pacs_number}')
 
-        except:
-            pass
+    newline = '\n'
 
-        else:
-            #MessageCountInfoforQueueType
-            output_list.append(f'# HELP merge_pacs_ea_schedule_work_engine ea scheduleworkengine numbers')
-            output_list.append(f'# TYPE merge_pacs_ea_schedule_work_engine counter')
-            for data_item in jsonResponse['data']:
-                output_list.append(f'merge_pacs_ea_schedule_work_engine{{server="{servername}",componentName="{data_item["componentName"]}",taskname="{data_item["taskName"]}",status="{data_item["status"]}"}} {data_item["count"]}')
-        output_list.append('')
 
     output_list.append('')
 
