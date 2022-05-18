@@ -400,7 +400,7 @@ class ClientMessagingServerAppMetrics:
         # Define the unique metrics to collect (labels will be added later)
         logging.info(f'Initializing metrics for {self.service_name}')
 
-        self.g_active_users = Gauge(f'{self.prefix}_cms_active_users', f'Active Merge PACS users from the {self.service_name} service)', ['server'])
+        self.g_active_users = Gauge(f'{self.prefix}_active_users', f'Active Merge PACS users from the {self.service_name} service)', ['server'])
 
     def fetch(self, http_request_timeout=2):
         """ 
@@ -835,7 +835,6 @@ class EANotificationProcessorAppMetrics:
             self.g_active_studies_idletime_max.labels(server=self.server_label).set(max_time)
             self.g_active_studies_idletime_avg.labels(server=self.server_label).set(mean_time)
             logging.info(f'  Metrics created for JMS sender and receiver notifications')
-
 
 class SchedulerAppMetrics:
     """
