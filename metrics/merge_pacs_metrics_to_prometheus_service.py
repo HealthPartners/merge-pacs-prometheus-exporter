@@ -23,6 +23,7 @@ Versions:
  3.1 - 03/27/22 - Made a separate function to initialize metrics to be able to reuse it in both the "noservice" and regular methods of running
  3.2 - 04/08/22 - Add exporter info class to be able to export some info metrics about this process. Starting with just the version number of the exporter.
  3.3 - 04/12/22 - Add additional EA NP metrics for JMS sessions and active studies/images
+ 3.4 - 05/17/22 - Add sender service metrics
  """
 
 from datetime import datetime
@@ -62,7 +63,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.3
+CURRENT_VERSION = 3.4
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 20
