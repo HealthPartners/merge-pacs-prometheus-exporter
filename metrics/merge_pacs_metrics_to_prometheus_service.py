@@ -400,7 +400,7 @@ class ClientMessagingServerAppMetrics:
         # Define the unique metrics to collect (labels will be added later)
         logging.info(f'Initializing metrics for {self.service_name}')
 
-        self.g_active_users = Gauge(f'{self.prefix}_cms_active_users', f'Active Merge PACS users from the {self.service_name} service)', ['server'])
+        self.g_active_users = Gauge(f'{self.prefix}_active_users', f'Active Merge PACS users from the {self.service_name} service)', ['server'])
 
     def fetch(self, http_request_timeout=2):
         """ 
@@ -836,7 +836,6 @@ class EANotificationProcessorAppMetrics:
             self.g_active_studies_idletime_avg.labels(server=self.server_label).set(mean_time)
             logging.info(f'  Metrics created for JMS sender and receiver notifications')
 
-
 class SchedulerAppMetrics:
     """
     Functions to:
@@ -984,6 +983,123 @@ class SchedulerAppMetrics:
             
             logging.info(f'  Metrics created for jobs blocked')
 
+class SenderAppMetrics:
+    """
+    Functions to:
+    * Initialize the class and define each metric that we're going to collect
+    * Get the data from the source application metric page
+    * Helper functions for formatting each type of metric to make code more readable
+    """
+
+    def __init__(self, metric_url, metric_server_label='unknown_merge_pacs_servername', metric_service_name='Merge PACS Process', \
+        metric_prefix='merge_pacs_unk', metric_username='', metric_password='', metric_domain='healthpartners'):
+        
+        logging.info(f'Initializing the {self.__class__.__name__} metric data class')
+
+        # The url where this service's metrics are available
+        self.metric_url = metric_url
+
+        # Define the label to use for {server=XXX} labels in each metric. Generally this should be the server's name
+        self.server_label = metric_server_label
+        
+        # Define a service name for clarity in debugging
+        self.service_name = metric_service_name
+
+        # Define login information needed to get to the metrics
+        self.metric_username = metric_username
+        self.metric_password = metric_password
+        self.metric_domain = metric_domain
+ 
+        # What is the prefix string all these metrics will share? (Don't end in "_" -- one will be added)
+        self.prefix = metric_prefix
+
+        # Define the unique metrics to collect (labels will be added later)
+        logging.info(f'Initializing metrics for {self.service_name}')
+        self.g_database_connections = Gauge(f'{self.prefix}_database_connections', f'Database connections from the {self.service_name} service', ['server', 'dbConnectionStatus'])
+        self.g_service_uptime = Gauge(f'{self.prefix}_server_uptime', f'Number of hours {self.service_name} has been running since last restart', ['server'])
+        self.g_memory_current = Gauge(f'{self.prefix}_memory_current', f'Current memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
+        self.g_memory_peak = Gauge(f'{self.prefix}_memory_peak', f'Peak memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
+
+        self.g_job_queue = Gauge(f'{self.prefix}_job_queue', f'Jobs queued by status for the {self.service_name} service', ['server', 'status'])
+        self.g_process_instance_stats = Gauge(f'{self.prefix}_instance_stats', f'Instances sent and failed since startup by the {self.service_name} service', ['server', 'status'])
+
+    def fetch(self, http_request_timeout = 2.0):
+        """ 
+        Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
+        """
+        logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
+
+        # Get server status page data
+        try:
+            r = requests.get(self.metric_url, timeout=http_request_timeout)
+            
+            # Raise an error if we have a 4XX or 5XX response
+            r.raise_for_status()
+        except requests.exceptions.Timeout:
+            logging.error(f'Timed out getting metrics page {self.metric_url}!')
+        except requests.exceptions.HTTPError as httperr:
+            logging.error(f'HTTP error getting data from {self.metric_url}! Error: {httperr}')
+        except requests.exceptions.RequestException as rex:
+            # Some sort of catastrophic error. bail.
+            logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
+        else:
+            ### Parse active and idle database connections
+            # self._parse_database_connections(r.text)
+            _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
+
+            ### Parse service uptime
+            # self._parse_service_uptime(r.text)
+            _parse_service_uptime(service_uptime_metric_obj=self.g_service_uptime, server_label=self.server_label, metrics_html=r.text)
+
+            ### Parse memory utilization
+            # self._parse_memory_utilization(r.text)
+            _parse_memory_utilization(memory_current_metric_obj=self.g_memory_current, memory_peak_metric_obj=self.g_memory_peak, \
+                server_label=self.server_label, metrics_html=r.text)
+
+            ### Active threads 
+            self._parse_job_queue_summary(r.text)
+
+            ### Jobs blocked
+            self._parse_send_summary(r.text)
+
+        logging.info(f'Done fetching metrics for this polling interval for {self.service_name}')
+
+    def _parse_job_queue_summary(self, metrics_html):
+        logging.info(f'  Parsing text for sender job queue summary')
+        try:
+            pattern = r'Sender Job Queue Summary: New\((?P<new>\d+)\), Inprogress\((?P<in_progress>\d+)\), Error\((?P<error>\d+)\)'
+            match = re.search(pattern, metrics_html)
+            sender_job_queue_new = match.group('new')
+            sender_job_queue_in_progress = match.group('in_progress')
+            sender_job_queue_error = match.group('error')
+
+        except:
+            logging.warning(f'  Failed to match a pattern for the Sender Job Queue Summary data. Not creating metric.')
+            logging.raiseExceptions
+        else:
+            self.g_job_queue.labels(server=self.server_label, status='new').set(sender_job_queue_new)
+            self.g_job_queue.labels(server=self.server_label, status='in_progress').set(sender_job_queue_in_progress)
+            self.g_job_queue.labels(server=self.server_label, status='error').set(sender_job_queue_error)
+
+            logging.info(f'  Metrics created for sender job queue summary data')
+            
+    def _parse_send_summary(self, metrics_html):
+        logging.info(f'  Parsing text for sender service summary stats')
+
+        try:
+            pattern = r'Send summary: <B>(?P<successful>\d+)</B> \(successful\) <B>(?P<failed>\d+)</B> \(failed\) instances'
+            match = re.search(pattern, metrics_html)
+            successful_instances = match.group('successful')
+            failed_instances = match.group('failed')
+
+        except:
+            logging.warning(f'  Failed to match pattern for Send summary data. Not creating metric.')
+            logging.raiseExceptions
+        else:
+            self.g_process_instance_stats.labels(server=self.server_label, status='successful').set(successful_instances)      
+            self.g_process_instance_stats.labels(server=self.server_label, status='failed').set(failed_instances)      
+            
+            logging.info(f'  Metrics created for sender service Send summary')
 
 ### The three functions below to parse database connections (active and idle), service uptime, and memory utilization (peak and current) are used for 
 ### metrics as the information on each of the service pages is identical in layout for this information.
@@ -1060,6 +1176,7 @@ def _initialize_metric_classes(
     application_server_metric_url='http://localhost/servlet/AppServerMonitor',
     ea_notification_processor_metric_url='http://localhost:11111/serverStatus',
     scheduler_metric_url='http://localhost:11098/serverStatus',
+    sender_metric_url='http://localhost:11110/serverStatus',
     server_name_label = ''
 ):
     """
@@ -1100,8 +1217,12 @@ def _initialize_metric_classes(
     metric_class_objects.append(ea_notification_procesor_app_metrics)
 
     scheduler_app_metrics = SchedulerAppMetrics(metric_url=scheduler_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Scheduler', metric_prefix='merge_pacs_ss')
+        metric_server_label=server_name_label, metric_service_name='Scheduler', metric_prefix='merge_pacs_scheds')
     metric_class_objects.append(scheduler_app_metrics)
+
+    sender_app_metrics = SenderAppMetrics(metric_url=sender_metric_url, \
+        metric_server_label=server_name_label, metric_service_name='Sender', metric_prefix='merge_pacs_sends')
+    metric_class_objects.append(sender_app_metrics)
 
     return metric_class_objects
 
@@ -1213,6 +1334,7 @@ def main():
             application_server_metric_url = f'http://{server_name}/servlet/AppServerMonitor',
             ea_notification_processor_metric_url = f'http://{server_name}:11111/serverStatus',
             scheduler_metric_url = f'http://{server_name}:11098/serverStatus',
+            sender_metric_url = f'http://{server_name}:11110/serverStatus',
             server_name_label = server_name
         )
         
