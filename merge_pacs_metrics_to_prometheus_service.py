@@ -921,6 +921,11 @@ class SchedulerAppMetrics:
 
     def _parse_active_threads(self, metrics_html):
         logging.info(f'  Parsing text for active threads metrics')
+        
+        # Clear out the gague metric's previous labels and values. Otherwise if there's no data in this scrape for a particular label combination
+        # gague will just report out the most recent value. That's not exactly what we want.
+        self.g_active_threads.clear()
+
         try:
             # Find the table (should be the only one, but to be safe) containing the term "Instance Notifications"
             # breakpoint()
