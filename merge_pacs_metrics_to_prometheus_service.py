@@ -204,8 +204,13 @@ class MessagingServerAppMetrics:
         logging.info(f'Done fetching metrics for this polling interval for {self.service_name}')
 
     def _parse_message_counts(self, metrics_html):
+        logging.info(f'  Parsing text for message counts metric')
+        
+        # Clear out the gague metric's previous labels and values. Otherwise if there's no data in this scrape for a particular label combination
+        # gague will just report out the most recent value. That's not exactly what we want.
+        self.g_message_counts.clear()
+
         try:
-            logging.info(f'  Parsing text for message counts metric')
             #pattern = re.compile(r'<TR (class="even")?><TD><a href=.*>(?P<queueName>[\w\-\.]+)</a></TD>\n<TD>(?P<queueType>\w+)</TD>\n<TD>(?P<messageCount>\d+)</TD>\n<TD>(?P<consumerCount>\d+)</TD>\n</TR>')
             # Find the table (should be the only one, but to be safe) containing the term "Message Count"
             # Assumes the table will have columns named "Name", "Type", "Message Count" and "Consumer Count"
