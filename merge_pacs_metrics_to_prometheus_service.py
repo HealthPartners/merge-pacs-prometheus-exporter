@@ -24,6 +24,7 @@ Versions:
  3.2 - 04/08/22 - Add exporter info class to be able to export some info metrics about this process. Starting with just the version number of the exporter.
  3.3 - 04/12/22 - Add additional EA NP metrics for JMS sessions and active studies/images
  3.4 - 05/17/22 - Add sender service metrics
+ 3.5 - 05/17/22 - Clear scheduler active threads metric before collection each time since content is dynamic
  """
 
 from datetime import datetime
@@ -63,7 +64,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.4
+CURRENT_VERSION = 3.5
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 20
