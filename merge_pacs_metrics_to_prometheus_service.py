@@ -24,6 +24,7 @@ Versions:
  3.2 - 04/08/22 - Add exporter info class to be able to export some info metrics about this process. Starting with just the version number of the exporter.
  3.3 - 04/12/22 - Add additional EA NP metrics for JMS sessions and active studies/images
  3.4 - 05/17/22 - Add sender service metrics
+ 3.5 - 05/17/22 - Clear scheduler active threads metric before collection each time since content is dynamic
  """
 
 from datetime import datetime
@@ -63,7 +64,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.4
+CURRENT_VERSION = 3.5
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 20
@@ -203,8 +204,13 @@ class MessagingServerAppMetrics:
         logging.info(f'Done fetching metrics for this polling interval for {self.service_name}')
 
     def _parse_message_counts(self, metrics_html):
+        logging.info(f'  Parsing text for message counts metric')
+        
+        # Clear out the gague metric's previous labels and values. Otherwise if there's no data in this scrape for a particular label combination
+        # gague will just report out the most recent value. That's not exactly what we want.
+        self.g_message_counts.clear()
+
         try:
-            logging.info(f'  Parsing text for message counts metric')
             #pattern = re.compile(r'<TR (class="even")?><TD><a href=.*>(?P<queueName>[\w\-\.]+)</a></TD>\n<TD>(?P<queueType>\w+)</TD>\n<TD>(?P<messageCount>\d+)</TD>\n<TD>(?P<consumerCount>\d+)</TD>\n</TR>')
             # Find the table (should be the only one, but to be safe) containing the term "Message Count"
             # Assumes the table will have columns named "Name", "Type", "Message Count" and "Consumer Count"
@@ -921,6 +927,11 @@ class SchedulerAppMetrics:
 
     def _parse_active_threads(self, metrics_html):
         logging.info(f'  Parsing text for active threads metrics')
+        
+        # Clear out the gague metric's previous labels and values. Otherwise if there's no data in this scrape for a particular label combination
+        # gague will just report out the most recent value. That's not exactly what we want.
+        self.g_active_threads.clear()
+
         try:
             # Find the table (should be the only one, but to be safe) containing the term "Instance Notifications"
             # breakpoint()
