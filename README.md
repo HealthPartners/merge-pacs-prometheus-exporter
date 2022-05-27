@@ -7,18 +7,29 @@ Collects metrics data from the locally hosted pages that Merge PACS processes ex
 
 ### Prerequistes before first use
 1) Of course python must be installed. Install it for all users and choose the "Install py launcher" option.
-1) Install the required client packages:
-```
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pandas
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org requests
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org lxml
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pywin32
-```
+    * Run the Python installer
+    * Select the checkboxs to "Add Python to Path" and "Install for all users"
+    * Choose Customize Installation
+        * Under Optional Features: Ensure the options to install py launcher for all users are selected
+        * Under Advanced Options: Choose "Install for all users" and "Add Python to environment variables" and "Create shortcuts for installed applications" if not already selected
+
+1) Install the required client packages. 
+    1) First update pip, then install required packages. To do this, run a cmd prompt as your SA account, then:
+    ```
+    pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    ```
+    1) Install required packages
+    ```
+    pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client pandas requests lxml pywin32
+    ```
+    1) Run the PyWin32 post-install script (update the **Python310** part to match your version number)
+    ```
+    python "c:\program files\Python310\Scripts\pywin32_postinstall.py" -install
+    ```
  \* Note the "trusted-host" part may be required on servers because python doesn't recognize the HP SSL certificate that the NetScalers use for SSL inspection
 
 ### Deployment Steps
-* Copy the updated script from GitLab to the K:\HPMetrics (shared as \\server\HPMetrics) folder on each server
+* Copy the updated script from GitLab to the K:\HPMetrics folder on each server
 * From a command prompt on the target server, run these commands: 
 ```
 python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py stop     (this will error out if the service has NEVER run on this server before)
@@ -27,6 +38,3 @@ python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install
 python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start
 sc config HealthPartnersMetricsService start=Auto
 ```
-
-
-
