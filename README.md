@@ -29,12 +29,12 @@ Collects metrics data from the locally hosted pages that Merge PACS processes ex
  \* Note the "trusted-host" part may be required on servers because python doesn't recognize the HP SSL certificate that the NetScalers use for SSL inspection
 
 ### Deployment Steps
-* Copy the updated script from GitLab to the K:\HPMetrics folder on each server
+* Copy the updated script from GitLab to the C:\HPMetrics folder on each server
 * From a command prompt on the target server, run these commands: 
 ```
-python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py stop     (this will error out if the service has NEVER run on this server before)
-python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove     (this will error out if the service has NEVER run on this server before)
-python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install
-python k:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start
+python c:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py stop     (this will error out if the service has NEVER run on this server before)
+python c:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py remove     (this will error out if the service has NEVER run on this server before)
+python c:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py install
+python c:\HPmetrics\merge_pacs_metrics_to_prometheus_service.py start
 sc config HealthPartnersMetricsService start=Auto
 ```
