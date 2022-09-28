@@ -64,7 +64,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.5
+CURRENT_VERSION = 3.6
 
 # How often the metric data should be refreshed from the application source
 POLLING_INTERVAL_SECONDS = 20
@@ -73,9 +73,10 @@ POLLING_INTERVAL_SECONDS = 20
 HOSTING_PORT = 7601
 
 # Application server metrics page login information -- needed for the Application Server (MergePACSWeb) service. This is valid Merge PACS user.
+# The APP_DOMAIN setting must match the domain value you have configured in the LDAP servers configuration in Merge Management
 APP_USERNAME = 'merge'
 APP_PASSWORD = 'H3@lthp@rtn3rsP@C5'
-APP_DOMAIN = 'healthpartners'
+APP_DOMAIN = 'healthpartners.int'
 
 # Set logging parameters
 # Change level to print more or fewer debugging messages
@@ -458,7 +459,7 @@ class ApplicationServerAppMetrics:
     """
 
     def __init__(self, metric_url, metric_server_label='unknown_merge_pacs_servername', metric_service_name='Merge PACS Process', \
-        metric_prefix='merge_pacs_unk', metric_username='', metric_password='', metric_domain='healthpartners'):
+        metric_prefix='merge_pacs_unk', metric_username='', metric_password='', metric_domain=''):
         
         logging.info(f'Initializing the {self.__class__.__name__} metric data class')
 
@@ -1313,7 +1314,8 @@ def main():
     """Main entry point
     
     There is an option to run the code without going through the windows service process mainly for debugging. You can
-    also optionally provide a second argument in this mode to target a server other than the localhost.
+    also optionally provide a second argument in this mode to target a server other than the localhost. But this option
+    isn't very helpful after Merge PACS v8 because the service status URLs are not available remotely.
 
         this_script.py noservice [servername]
             OR
@@ -1335,8 +1337,8 @@ def main():
             # If a second argument is provided use that as the server name to collect metrics from
             server_name = sys.argv[2]
         except:
-            # Default to None here, but if no argument is supplied the initialize function will use the current hostname
-            server_name = None
+            # Default to localhost here, which should generally be what you want
+            server_name = 'localhost'
 
         # Initialize new classes to set up all of the class definitions, define the metrics, etc.
         metric_objects = _initialize_metric_classes(
