@@ -4,7 +4,8 @@ Purpose:
 
  """
 
-import configparser
+from .config import CONFIG
+from .__init__ import __version__
 from datetime import datetime
 import logging
 import os
@@ -42,7 +43,7 @@ General steps:
 ##
 
 # Current software version
-CURRENT_VERSION = 3.7
+CURRENT_VERSION = __version__
 
 # Set logging parameters
 # Change level to print more or fewer debugging messages
@@ -1184,7 +1185,7 @@ def _initialize_metric_classes(
 
     application_server_app_metrics = ApplicationServerAppMetrics(metric_url=application_server_metric_url, \
         metric_server_label=server_name_label, metric_service_name='Application (MergePACSWeb) Server (/servlet/AppServerMonitor)', \
-        metric_prefix='merge_pacs_as', metric_username=APP_USERNAME, metric_password=APP_PASSWORD, metric_domain=APP_DOMAIN)
+        metric_prefix='merge_pacs_as', metric_username=CONFIG.APP_USERNAME, metric_password=CONFIG.APP_PASSWORD, metric_domain=CONFIG.APP_DOMAIN)
     metric_class_objects.append(application_server_app_metrics)
 
     ea_notification_procesor_app_metrics = EANotificationProcessorAppMetrics(metric_url=ea_notification_processor_metric_url, \
@@ -1201,48 +1202,25 @@ def _initialize_metric_classes(
 
     return metric_class_objects
 
-def read_config(file_path):
-    config = configparser.ConfigParser()
-    
-    logging.info(f'Attempting to read configuration data from {file_path}')
-    try:
-        config.read(file_path)
-    except:
-        logging.warning(f'  Failed to read configuration info from {file_path}!')
-        logging.raiseExceptions
-    else:
-        # General options
-        global POLLING_INTERVAL_SECONDS
-        POLLING_INTERVAL_SECONDS = config.getint('General','POLLING_INTERVAL_SECONDS', fallback=20)
+def fetch_metrics(metric_objects):
+    """
+    Given a list of metric class objects, call the .fetch() method for each to refresh its metrics values
+    """
+    logging.info(f'### Starting metric collection for this iteration ###')
 
-        global HOSTING_PORT
-        HOSTING_PORT = config.getint('General','HOSTING_PORT', fallback=8081)
+    logging.info(f'#   Reading configuration values')
 
-        global METRICS_SERVER
-        METRICS_SERVER = config.get('General', 'METRICS_HOSTNAME', fallback='localhost')
+    for metric_object in metric_objects:
+        try:
+            metric_object.fetch(http_request_timeout=CONFIG.HTTP_TIMEOUT)
+        except:
+            logging.error(f'Failed to call the fetch() method for object of class {metric_object.__class__.__name__}')
+            logging.raiseExceptions
 
-        global HTTP_TIMEOUT
-        HTTP_TIMEOUT = config.get('General', 'HTTP_TIMEOUT', fallback=2.0)
-        
-        global METRICS_SERVER_LABEL
-        local_hostname = os.getenv('COMPUTERNAME', 'merge_pacs_unknown_server').lower()
-        METRICS_SERVER_LABEL = config.get('General', 'METRICS_SERVER_LABEL', fallback=local_hostname)
+    # Force the configuration file to be re-read from disk once per iteration
+    CONFIG.reload_config()
 
-        # Application-level options. Get the username/password/domain to use to log in to the application:
-        global APP_USERNAME, APP_PASSWORD, APP_DOMAIN
-        APP_USERNAME = config.get('MergePACS', 'APP_USERNAME', fallback='merge')
-        APP_PASSWORD = config.get('MergePACS', 'APP_PASSWORD', fallback='password')
-        APP_DOMAIN = config.get('MergePACS', 'APP_DOMAIN', fallback='domain.int')
-
-        # Service-related options
-        global SERVICE_NAME
-        SERVICE_NAME = config.get('Service', 'SERVICE_NAME', fallback='MergePACSPrometheusExporter')
-
-        global SERVICE_DISPLAY_NAME
-        SERVICE_DISPLAY_NAME = config.get('Service', 'SERVICE_DISPLAY_NAME', fallback='Merge PACS Prometheus Exporter Service')
-
-        global SERVICE_DESCRIPTION
-        SERVICE_DESCRIPTION = config.get('Service', 'SERVICE_DESCRIPTION', fallback='Customized service that exposes Merge PACS metric data in Prometheus format')
+    logging.info(f'### End metric collection for this iteration. Sleeping for {CONFIG.POLLING_INTERVAL_SECONDS} seconds. ###')
 
 
 
@@ -1250,9 +1228,9 @@ class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
     """ Options to install, run, start and restart this application as a Windows service
         See: https://stackoverflow.com/questions/69008155/run-python-script-as-a-windows-service
     """
-    _svc_name_ = SERVICE_NAME
-    _svc_display_name_ = SERVICE_DISPLAY_NAME
-    _svc_description_ = SERVICE_DESCRIPTION
+    _svc_name_ = CONFIG.SERVICE_NAME
+    _svc_display_name_ = CONFIG.SERVICE_DISPLAY_NAME
+    _svc_description_ = CONFIG.SERVICE_DESCRIPTION
 
     @classmethod
     def parse_command_line(cls):
@@ -1288,27 +1266,16 @@ class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
         metric_objects = _initialize_metric_classes()
         
         # Start up the http mini-server
-        logging.info(f'Starting http server on port {HOSTING_PORT}')
-        start_http_server(HOSTING_PORT)
+        logging.info(f'Starting http server on port {CONFIG.HOSTING_PORT}')
+        start_http_server(CONFIG.HOSTING_PORT)
 
         while self.isrunning:
-            # Start the loop that will refresh the metrics at every polling interval. When the service stop
-            # command is issued, isrunning will be updated to be False to break the loop. Note that it will take up
-            # to POLLING_INTERVAL_SECONDS to stop the service. So some optimization might be good.
-            logging.info(f'### Starting metric collection for this iteration ###')
-
-            for metric_object in metric_objects:
-                try:
-                    metric_object.fetch(http_request_timeout=HTTP_TIMEOUT)
-                except:
-                    logging.error(f'Failed to call the fetch() method for object of class {metric_object.__class__.__name__}')
-                    logging.raiseExceptions
-
-            logging.info(f'### End metric collection for this iteration. Sleeping for {POLLING_INTERVAL_SECONDS} seconds. ###')
+            # Start the loop that will refresh the metrics at every polling interval. 
+            fetch_metrics(metric_objects)
             
-            wait_seconds = 0     # reset the counter
+            wait_seconds = 0     # reset the wait counter
 
-            while wait_seconds < POLLING_INTERVAL_SECONDS and self.isrunning:
+            while wait_seconds < CONFIG.POLLING_INTERVAL_SECONDS and self.isrunning:
                 #time.sleep(POLLING_INTERVAL_SECONDS)
                 time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
                 wait_seconds = wait_seconds + 1
@@ -1331,9 +1298,6 @@ def main():
 
     logging.info(f'Starting {sys.argv[0]} version {CURRENT_VERSION}')
 
-    # Read configuration from config.ini in the same directory as this script
-    read_config('config.ini')
-
     try:
         arg1 = sys.argv[1]
     except:
@@ -1346,27 +1310,17 @@ def main():
         metric_objects = _initialize_metric_classes()
         
         # Start up the http mini-server
-        logging.info(f'Starting http server on port {HOSTING_PORT}')
-        start_http_server(HOSTING_PORT)
+        logging.info(f'Starting http server on port {CONFIG.HOSTING_PORT}')
+        start_http_server(CONFIG.HOSTING_PORT)
 
         while True:
-            # Start the loop that will refresh the metrics at every polling interval. When the service stop
-            # command is issued, isrunning will be updated to be False to break the loop. Note that it will take up
-            # to POLLING_INTERVAL_SECONDS to stop the service. So some optimization might be good.
-            logging.info(f'### Starting metric collection for this iteration ###')
+            # Start the loop that will refresh the metrics at every polling interval. 
 
-            for metric_object in metric_objects:
-                try:
-                    metric_object.fetch()
-                except:
-                    logging.error(f'Failed to call the fetch() method for object of class {metric_object.__class__.__name__}')
-                    logging.raiseExceptions
-
-            logging.info(f'### End metric collection for this iteration. Sleeping for {POLLING_INTERVAL_SECONDS} seconds. ###')
+            fetch_metrics(metric_objects)
             
             wait_seconds = 0     # reset the counter
 
-            while wait_seconds < POLLING_INTERVAL_SECONDS:
+            while wait_seconds < CONFIG.POLLING_INTERVAL_SECONDS:
                 #time.sleep(POLLING_INTERVAL_SECONDS)
                 time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
                 wait_seconds = wait_seconds + 1
@@ -1375,7 +1329,7 @@ def main():
 
     else:
         # Pass the argument to the win32serviceutil command to be interested as a start/stop/install/remove/debug command for the service
-        hp_metric_service = RunHealthPartnersMetricsService.parse_command_line()
+        metric_service = RunHealthPartnersMetricsService.parse_command_line()
     
 
 if __name__ == "__main__":
