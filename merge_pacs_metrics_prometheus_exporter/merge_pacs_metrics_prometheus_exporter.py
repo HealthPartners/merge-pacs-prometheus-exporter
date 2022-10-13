@@ -1296,7 +1296,7 @@ def main():
     
     """
 
-    logging.info(f'Starting {sys.argv[0]} version {CURRENT_VERSION}')
+    logging.info(f'Running merge_pacs_metrics_prometheus_exporter version {CURRENT_VERSION}')
 
     try:
         arg1 = sys.argv[1]

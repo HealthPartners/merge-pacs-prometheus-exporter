@@ -12,7 +12,7 @@ with open('merge_pacs_metrics_prometheus_exporter/__init__.py', 'rb') as f:
 
 
 setup(
-        name='merge_pacs_metrics_prometheus_exporter',
+    name='merge_pacs_metrics_prometheus_exporter',
     version=version,
     description="An application to scrape metrics data from Merge PACS servers",
     install_requires=[
