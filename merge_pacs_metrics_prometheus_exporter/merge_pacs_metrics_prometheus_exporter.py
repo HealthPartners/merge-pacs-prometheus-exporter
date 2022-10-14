@@ -4,8 +4,10 @@ Purpose:
 
  """
 
-from .config import CONFIG
+#from .config import CONFIG
+from .config import CONF
 from .__init__ import __version__
+import argparse
 from datetime import datetime
 import logging
 import os
@@ -1185,7 +1187,7 @@ def _initialize_metric_classes(
 
     application_server_app_metrics = ApplicationServerAppMetrics(metric_url=application_server_metric_url, \
         metric_server_label=server_name_label, metric_service_name='Application (MergePACSWeb) Server (/servlet/AppServerMonitor)', \
-        metric_prefix='merge_pacs_as', metric_username=CONFIG.APP_USERNAME, metric_password=CONFIG.APP_PASSWORD, metric_domain=CONFIG.APP_DOMAIN)
+        metric_prefix='merge_pacs_as', metric_username=CONF.APP_USERNAME, metric_password=CONF.APP_PASSWORD, metric_domain=CONF.APP_DOMAIN)
     metric_class_objects.append(application_server_app_metrics)
 
     ea_notification_procesor_app_metrics = EANotificationProcessorAppMetrics(metric_url=ea_notification_processor_metric_url, \
@@ -1212,15 +1214,12 @@ def fetch_metrics(metric_objects):
 
     for metric_object in metric_objects:
         try:
-            metric_object.fetch(http_request_timeout=CONFIG.HTTP_TIMEOUT)
+            metric_object.fetch(http_request_timeout=CONF.HTTP_TIMEOUT)
         except:
             logging.error(f'Failed to call the fetch() method for object of class {metric_object.__class__.__name__}')
             logging.raiseExceptions
 
-    # Force the configuration file to be re-read from disk once per iteration
-    CONFIG.reload_config()
-
-    logging.info(f'### End metric collection for this iteration. Sleeping for {CONFIG.POLLING_INTERVAL_SECONDS} seconds. ###')
+    logging.info(f'### End metric collection for this iteration. Sleeping for {CONF.POLLING_INTERVAL_SECONDS} seconds. ###')
 
 
 
@@ -1228,9 +1227,9 @@ class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
     """ Options to install, run, start and restart this application as a Windows service
         See: https://stackoverflow.com/questions/69008155/run-python-script-as-a-windows-service
     """
-    _svc_name_ = CONFIG.SERVICE_NAME
-    _svc_display_name_ = CONFIG.SERVICE_DISPLAY_NAME
-    _svc_description_ = CONFIG.SERVICE_DESCRIPTION
+    _svc_name_ = CONF.SERVICE_NAME
+    _svc_display_name_ = CONF.SERVICE_DISPLAY_NAME
+    _svc_description_ = CONF.SERVICE_DESCRIPTION
 
     @classmethod
     def parse_command_line(cls):
@@ -1266,8 +1265,8 @@ class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
         metric_objects = _initialize_metric_classes()
         
         # Start up the http mini-server
-        logging.info(f'Starting http server on port {CONFIG.HOSTING_PORT}')
-        start_http_server(CONFIG.HOSTING_PORT)
+        logging.info(f'Starting http server on port {CONF.HOSTING_PORT}')
+        start_http_server(CONF.HOSTING_PORT)
 
         while self.isrunning:
             # Start the loop that will refresh the metrics at every polling interval. 
@@ -1275,10 +1274,13 @@ class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
             
             wait_seconds = 0     # reset the wait counter
 
-            while wait_seconds < CONFIG.POLLING_INTERVAL_SECONDS and self.isrunning:
+            while wait_seconds < CONF.POLLING_INTERVAL_SECONDS and self.isrunning:
                 #time.sleep(POLLING_INTERVAL_SECONDS)
                 time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
                 wait_seconds = wait_seconds + 1
+
+            # Reload values in the CONF class at the end of the interval
+            CONF.load_config()
 
         logging.info('Service stop received. Terminating loop.')
 
@@ -1290,28 +1292,45 @@ def main():
     also optionally provide a second argument in this mode to target a server other than the localhost. But this option
     isn't very helpful after Merge PACS v8 because the service status URLs are not available remotely.
 
-        this_script.py noservice
+    Useage:
+
+        python -m merge_pacs_metrics_prometheus_exporter noservice
             OR
-        this_script.py [options] install|update|remove|start [...]|stop|restart [...]|debug [...]
+        python -m merge_pacs_metrics_prometheus_exporter [options] install|update|remove|start [...]|stop|restart [...]|debug [...]
     
     """
 
     logging.info(f'Running merge_pacs_metrics_prometheus_exporter version {CURRENT_VERSION}')
 
-    try:
-        arg1 = sys.argv[1]
-    except:
-        arg1 = None
+    # Read in configuration from file in the form of a class where each configuration is a class property
+    #global CONF
+    #CONF = config.Config()
 
-    if arg1 == 'noservice':
+
+    parser = argparse.ArgumentParser(description='The merge_pacs_metrics_prometheus_exporter python module helps to scrape metrics from \
+        a Merge PACS server and present them in prometheus format',
+        prog='python -m merge_pacs_metrics_prometheus_exporter'
+    )
+
+    parser.add_argument('--noservice', action='store_true', help='Run the script without installing the service. Useful for troubleshooting to view activity output on the console')
+    parser.add_argument('--configfile', action='store', help='Path to a locally customized configuration file in stanadard ini format')
+    #parser.add_argument('--noservice', action='store_true',help='Run the script without installing the service. Useful for troubleshooting to view activity output on the console')
+    args = parser.parse_args()
+
+    if args.configfile:
+        # Set the custom configuration file path in the class so it can be reloaded on demand later, then loads the custom config
+        CONF.set_custom_config(args.configfile)
+        CONF.load_config()
+
+    if args.noservice:
         ### Run WITHOUT calling the service options install, run, start and restart this application as a Windows service
 
         # Initialize new classes to set up all of the class definitions, define the metrics, etc.
         metric_objects = _initialize_metric_classes()
         
         # Start up the http mini-server
-        logging.info(f'Starting http server on port {CONFIG.HOSTING_PORT}')
-        start_http_server(CONFIG.HOSTING_PORT)
+        logging.info(f'Starting http server on port {CONF.HOSTING_PORT}')
+        start_http_server(CONF.HOSTING_PORT)
 
         while True:
             # Start the loop that will refresh the metrics at every polling interval. 
@@ -1320,10 +1339,13 @@ def main():
             
             wait_seconds = 0     # reset the counter
 
-            while wait_seconds < CONFIG.POLLING_INTERVAL_SECONDS:
+            while wait_seconds < CONF.POLLING_INTERVAL_SECONDS:
                 #time.sleep(POLLING_INTERVAL_SECONDS)
                 time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
                 wait_seconds = wait_seconds + 1
+
+            # Reload values in the CONF class at the end of the interval
+            CONF.load_config()
 
         logging.warning('Somehow we have exited the metrics collection loop!')    
 
