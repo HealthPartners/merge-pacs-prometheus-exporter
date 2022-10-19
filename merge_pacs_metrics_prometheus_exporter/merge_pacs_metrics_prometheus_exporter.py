@@ -1304,10 +1304,6 @@ def main():
 
     logging.info(f'Running merge_pacs_metrics_prometheus_exporter version {CURRENT_VERSION}')
 
-    # Read in configuration from file in the form of a class where each configuration is a class property
-    #global CONF
-    #CONF = config.Config()
-
     program_name = 'python -m merge_pacs_metrics_prometheus_exporter'
 
     parser = argparse.ArgumentParser(description='The merge_pacs_metrics_prometheus_exporter python module helps to scrape metrics from \
@@ -1317,28 +1313,19 @@ def main():
 
     parser.add_argument('--noservice', action='store_true', help='Run the script without installing the service. Useful for troubleshooting to view activity output on the console')
     parser.add_argument('--configfile', action='store', help='Path to a locally customized configuration file in stanadard ini format. Note this only works with the --noservice option')
-    parser.add_argument('service_action', type=str, nargs='*')
+
     # Parse the command line options for one of the above known arguments. The remaining arguments will be passed through to the win32serviceutil.HandleCommandLine
     # function to be interested as service control commands. Known arguments will be in args[0] and remaining arguments will be in args[1]
-    args = parser.parse_args()
+    args = parser.parse_known_args()
     
-    
-    # Exporter args are the known argument to be consumed by this script. service_args are the other arguments that will be passed ton the win32serviceutil function
-    #exporter_args = args[0]
+    # Exporter args are the known argument to be consumed by this script. The other arguments that will be passed ton the win32serviceutil function
+    exporter_args = args[0]
 
     # When passing arguments to the win32serviceutil function, it expects a list in "argv" format. In other words, [0] should be the
     # program name, then [1:] should be the actual arguments to process. On other words, all the other arguments that aren't defined above.
-    service_args = [program_name] + args.service_action
+    service_args = [program_name] + args[1]
 
-    # if exporter_args.configfile is None:
-    #     logging.info(f'No custom configuration file provided')
-    # else:
-    #     # Set the custom configuration file path in the class so it can be reloaded on demand later, then loads the custom config
-    #     CONF.set_custom_config(exporter_args.configfile)
-    #     CONF.load_config()
-
-
-    if args.noservice:
+    if exporter_args.noservice:
         ### Run WITHOUT calling the service options to install, run, start and restart this application as a Windows service
 
         # Initialize new classes to set up all of the class definitions, define the metrics, etc.
@@ -1361,16 +1348,15 @@ def main():
                 wait_seconds = wait_seconds + 1
 
             # Reload values in the CONF class at the end of the interval
-            if args.configfile is not None:
+            if exporter_args.configfile is not None:
                 # Set the custom configuration file path in the class so it can be reloaded on demand later, then loads the custom config
-                CONF.load_custom_config(file_path = args.configfile)
+                CONF.load_custom_config(file_path = exporter_args.configfile)
 
         logging.warning('Somehow we have exited the metrics collection loop!')    
 
     else:
         # If the --noservice option IS NOT given, then pass the rest of the arguments to the win32serviceutil command 
         # to be interpreted as a start/stop/install/remove/debug/etc command for the service
-        #metric_service = RunMetricsService.parse_command_line(arguments=service_args)
         metric_service = RunMetricsService.parse_command_line(arguments=service_args)
 
 
