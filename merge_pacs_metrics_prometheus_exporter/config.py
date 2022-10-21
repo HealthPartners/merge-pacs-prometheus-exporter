@@ -20,8 +20,10 @@ import os
 from os.path import dirname, join
 
 
-_default_configpath = join(dirname(dirname(os.path.realpath(__file__))), "merge_pacs_metrics_prometheus_exporter", "default_config.ini")
-_custom_configpath = join(dirname(dirname(os.path.realpath(__file__))), "config.ini")
+# Don't rely on a configuration file being in the site-packages\merge_pacs_metrics_prometheus_exporter\ directory after all. Instead
+# just take default values by setting the fallback values in each of the config.get calls
+#_default_configpath = join(dirname(dirname(os.path.realpath(__file__))), "merge_pacs_metrics_prometheus_exporter", "default_config.ini")
+#_custom_configpath = join(dirname(dirname(os.path.realpath(__file__))), "config.ini")
 
 class _Config:
     """
@@ -29,41 +31,48 @@ class _Config:
     """
     def __init__(self, file_path = None):
         self.config = configparser.ConfigParser()
-        #self.load_configurations(file_path)
 
-    def load_configurations(self, file_path = _custom_configpath):
+    #def load_configurations(self, file_path = _custom_configpath):
+    def load_configurations(self, file_path):
         """
         Loads the default configuration values and any custom configuration from a provided filename
         """
-        self._load_default_config()
+        #self._load_default_config(file_path = _default_configpath)
         self._load_custom_config(file_path = file_path)
 
-    def _load_default_config(self):
-        """
-        Load default configuration values from the default ini file provided with the package
-        """
-        logging.info(f'Reading configuration data from default location: {_default_configpath}')
-        try:
-            self.config.read_file(open(_default_configpath))
-        except:
-            logging.warning(f'Failed to read default configuration file {_default_configpath}. Using fallback values.')
-            logging.raiseExceptions
+    # def _load_default_config(self, file_path):
+    #     """
+    #     Load default configuration values from the default ini file provided with the package
+    #     """
+    #     logging.info(f'Reading configuration data from default location: {file_path}')
+    #     try:
+    #         # Use read_file to generate an exception if the provided file can't be read
+    #         self.config.read_file(open(file_path))
+    #     except:
+    #         logging.warning(f'Failed to read default configuration file {file_path}. Using fallback values.')
+    #         logging.raiseExceptions
 
-    def _load_custom_config(self, file_path = _custom_configpath):
+    def _load_custom_config(self, file_path):
         """
         Load custom configuration values from the path provided
         """
-        logging.info(f'Checking for custom configuration in {file_path}')
+        logging.debug(f'Checking for custom configuration in {file_path}')
         try:
-            dataset = self.config.read(file_path)
+            dataset = self.config.read_file(open(file_path))
         except TypeError:
-            # No file_path provided
+            # No file_path provided -- do nothing
             pass
+        except FileNotFoundError as err:
+            logging.warning(f'Failed to find custom configuration file {file_path}. Using configuration default values only.')
+            logging.raiseExceptions
+            raise
+        except configparser.Error as err:
+            logging.error(f'Error processing custom configuration file {file_path}: {err}')
+            logging.raiseExceptions
+            raise
         else:
-            if len(dataset) == 0:
-                logging.warning(f'Failed to find custom configuration file {file_path}. Using configuration default values only.')
-            else:
-                logging.info(f'Custom configuration values read')
+            logging.info(f'Custom configuration values read')
+
 
     # General options
     @property
