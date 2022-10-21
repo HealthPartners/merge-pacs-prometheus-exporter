@@ -38,7 +38,10 @@ class _Config:
         Loads the default configuration values and any custom configuration from a provided filename
         """
         #self._load_default_config(file_path = _default_configpath)
-        self._load_custom_config(file_path = file_path)
+        if file_path == '' or file_path is None:
+            logging.info(f'No configuration file provided')
+        else:
+            self._load_custom_config(file_path = file_path)
 
     # def _load_default_config(self, file_path):
     #     """

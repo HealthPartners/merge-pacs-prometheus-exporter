@@ -166,14 +166,10 @@ class RunMetricsService(win32serviceutil.ServiceFramework):
     @classmethod
     def install(cls, service_args = sys.argv, custom_config_file=None):
         logging.info('Installing the metrics service')
-        cls._update_config_file_path(custom_config_file)
-        # try:
-        #     CONF.load_configurations(custom_config_file)
-        # except:
-        #     logging.warn(f'Error processing custom configuration file. Not updating the configuration path for the service.')
-        # else:
-        #     logging.info(f'Setting custom configuration file location to: {custom_config_file}')
-        #     win32serviceutil.SetServiceCustomOption(cls, 'CustomConfigFile', custom_config_file)
+        if custom_config_file == '' or custom_config_file is None:
+            logging.info(f'No configuration file provided')
+        else:
+            cls._update_config_file_path(custom_config_file)
 
         win32serviceutil.HandleCommandLine(cls, argv=service_args)
 
@@ -282,6 +278,12 @@ def main():
     # Exporter args are the known argument to be consumed by this script. The other arguments that will be passed ton the win32serviceutil function
     exporter_args = args[0]
 
+    # Get the absolute path to the user-supplied config file in the event the user supplied a relative one
+    try:
+        configfile = os.path.abspath(exporter_args.configfile)
+    except:
+        configfile = None
+
     # When passing arguments to the win32serviceutil function, it expects a list in "argv" format. In other words, [0] should be the
     # program name, then [1:] should be the actual arguments to process. On other words, all the other arguments that aren't defined above.
     service_args = [program_name] + args[1]
@@ -290,7 +292,7 @@ def main():
         ### Run WITHOUT calling the service options to install, run, start and restart this application as a Windows service
 
         # Load from configuration inis, if provided
-        CONF.load_configurations(file_path = exporter_args.configfile)
+        CONF.load_configurations(file_path = configfile)
 
         # Initialize new classes to set up all of the class definitions, define the metrics, etc.
         metric_objects = _initialize_metric_classes()
@@ -313,7 +315,7 @@ def main():
 
             # Reload values in the CONF class at the end of the interval
             if exporter_args.configfile is not None:
-                CONF.load_configurations(file_path = exporter_args.configfile)
+                CONF.load_configurations(file_path = configfile)
 
         logging.warning('Somehow we have exited the metrics collection loop!')    
 
@@ -325,10 +327,10 @@ def main():
 
         if 'install' in service_args:
             # in the case that we're installing the service. Provide path to the custom ini file so that the path can be updated in the registry.
-            metric_service.install(service_args=service_args, custom_config_file=exporter_args.configfile)
+            metric_service.install(service_args=service_args, custom_config_file=configfile)
         if 'update' in service_args:
             # in the case that we're updating the service. Provide path to the custom ini file so that the path can be updated in the registry.
-            metric_service.install(service_args=service_args, custom_config_file=exporter_args.configfile)
+            metric_service.install(service_args=service_args, custom_config_file=configfile)
         else:
             metric_service.parse_command_line(service_args=service_args)
 
