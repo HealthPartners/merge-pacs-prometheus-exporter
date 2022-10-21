@@ -14,7 +14,9 @@ Collects metrics data from the locally hosted pages that Merge PACS processes ex
     ```
     python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org  \path\to\merge-pacs-metrics-prometheus-exporter
     ```
-        If you receive and error similar to "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain" it is probably because you have a firewall or other similar device that decrypts SSL traffic and re-encrypts it with your organization's self-signed certificate. This certificate is not trusted by pip. One way to circumvent this warning is to use the trusted-host option to ignore the certificate errors. But be aware that this could leave you vulnerable to a man-in-the-middle attack since you are not verifying the site sources. One way to use trusted-hosts is below.
+    
+    If you receive and error similar to "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain" it is probably because you have a firewall or other similar device that decrypts SSL traffic and re-encrypts it with your organization's self-signed certificate. This certificate is not trusted by pip. One way to circumvent this warning is to use the trusted-host option to ignore the certificate errors. But be aware that this could leave you vulnerable to a man-in-the-middle attack since you are not verifying the site sources. One way to use trusted-hosts is below.
+
     ```
     python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org  \path\to\merge-pacs-metrics-prometheus-exporter
     ```

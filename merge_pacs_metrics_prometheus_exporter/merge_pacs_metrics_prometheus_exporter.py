@@ -4,6 +4,7 @@ Purpose:
 
  """
 
+from this import d
 from .config import CONF
 from .__init__ import __version__
 import argparse
@@ -1226,21 +1227,60 @@ class RunMetricsService(win32serviceutil.ServiceFramework):
     """ Options to install, run, start and restart this application as a Windows service
         See: https://stackoverflow.com/questions/69008155/run-python-script-as-a-windows-service
     """
+    logging.debug(f'Starting RunMetricsService class')
 
+    # I would love to make this class have the service name be more dynamic so it could be configurable, but I can't
+    # figure out how to make it work. The problem is that when PythonService is called to run those code as a Windows service
+    # I think it is calling directly into this class. It doesn't pass in the service name that's being called 
     _svc_name_ = CONF.SERVICE_NAME
+
+    # # Load configuration values from any supplied configuration files and update CONF() configuration class
+    # logging.debug(f'Loading configurations in {__name__}')
+    # CONF.load_configurations(win32serviceutil.GetServiceCustomOption('MergePACSPrometheusExporter','CustomConfigFile', None))
+
     _svc_display_name_ = CONF.SERVICE_DISPLAY_NAME
     _svc_description_ = CONF.SERVICE_DESCRIPTION
- 
-    @classmethod
-    def parse_command_line(cls, arguments = sys.argv):
-        #win32serviceutil.HandleCommandLine(cls)  
-        win32serviceutil.HandleCommandLine(cls, argv = arguments)
-
+  
+    # runtime_config = CONF
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         socket.setdefaulttimeout(60)
+
+    @classmethod
+    def parse_command_line(cls, service_args = sys.argv, servicename='MergePACSPrometheusExporter'):
+        """
+        Parses the command line options in argv or the provided alternate list of arguments (service_args). Also accepts
+        a string of any additional command line arguments that should be given to the exporter script when it runs.
+        """
+        # Load configuration values from any supplied configuration files and update CONF() configuration class
+        CONF.load_configurations(win32serviceutil.GetServiceCustomOption(servicename,'CustomConfigFile', None))
+        win32serviceutil.HandleCommandLine(cls, argv = service_args)
+
+    @classmethod
+    def install(cls, service_args = sys.argv, custom_config_file=None):
+        #argv = [sys.argv[0], 'install']
+        CONF.load_configurations(custom_config_file)
+        logging.info('Installing the metrics service')
+        if custom_config_file:
+            logging.debug(f'Setting custom configuration file location to: {custom_config_file}')
+            win32serviceutil.SetServiceCustomOption(cls, 'CustomConfigFile', custom_config_file)
+
+        win32serviceutil.HandleCommandLine(cls, argv=service_args)
+
+    @classmethod
+    def set_svc_name(cls, servicename):
+        cls._svc_name_ = servicename
+    
+    def set_svc_name2(self, servicename):
+        self._svc_name_ = servicename
+
+    @classmethod
+    def set_config_path(cls, configfilepath):
+        cls._exe_args__ = f'--configfile={configfilepath}'
+
+
 
     def SvcStop(self):
         self.stop()
@@ -1249,6 +1289,12 @@ class RunMetricsService(win32serviceutil.ServiceFramework):
 
     def SvcDoRun(self):
         self.start()
+        # Load configuration values from any supplied configuration files and update CONF() configuration class
+        CONF.load_configurations(win32serviceutil.GetServiceCustomOption('MergePACSPrometheusExporter','CustomConfigFile', None))
+
+        self._svc_display_name_ = CONF.SERVICE_DISPLAY_NAME
+        self._svc_description_ = CONF.SERVICE_DESCRIPTION
+
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               servicemanager.PYS_SERVICE_STARTED,
                               (self._svc_name_, ''))
@@ -1269,6 +1315,8 @@ class RunMetricsService(win32serviceutil.ServiceFramework):
         # Start up the http mini-server
         logging.info(f'Starting http server on port {CONF.HOSTING_PORT}')
         start_http_server(CONF.HOSTING_PORT)
+        #logging.info(f'Starting http server on port {self.runtime_config.HOSTING_PORT}')
+        #start_http_server(self.runtime_config.HOSTING_PORT)
 
         while self.isrunning:
             # Start the loop that will refresh the metrics at every polling interval. 
@@ -1282,7 +1330,7 @@ class RunMetricsService(win32serviceutil.ServiceFramework):
                 wait_seconds = wait_seconds + 1
 
             # Reload values in the CONF class at the end of the interval
-            CONF.load_custom_config()
+            CONF.load_configurations()
 
         logging.info('Service stop received. Terminating loop.')
 
@@ -1301,6 +1349,7 @@ def main():
         python -m merge_pacs_metrics_prometheus_exporter [options] install|update|remove|start [...]|stop|restart [...]|debug [...]
     
     """
+    logging.debug('argv = %s' % sys.argv)
 
     logging.info(f'Running merge_pacs_metrics_prometheus_exporter version {CURRENT_VERSION}')
 
@@ -1328,6 +1377,9 @@ def main():
     if exporter_args.noservice:
         ### Run WITHOUT calling the service options to install, run, start and restart this application as a Windows service
 
+        # Load from configuration inis, if provided
+        CONF.load_configurations(file_path = exporter_args.configfile)
+
         # Initialize new classes to set up all of the class definitions, define the metrics, etc.
         metric_objects = _initialize_metric_classes()
         
@@ -1349,15 +1401,25 @@ def main():
 
             # Reload values in the CONF class at the end of the interval
             if exporter_args.configfile is not None:
-                # Set the custom configuration file path in the class so it can be reloaded on demand later, then loads the custom config
-                CONF.load_custom_config(file_path = exporter_args.configfile)
+                CONF.load_configurations(file_path = exporter_args.configfile)
 
         logging.warning('Somehow we have exited the metrics collection loop!')    
 
     else:
         # If the --noservice option IS NOT given, then pass the rest of the arguments to the win32serviceutil command 
         # to be interpreted as a start/stop/install/remove/debug/etc command for the service
-        metric_service = RunMetricsService.parse_command_line(arguments=service_args)
+        metric_service = RunMetricsService
+
+
+        if 'install' in service_args:
+            # in the case that we're installing the service, provide the service name (from custom configs, if present) and
+            # path to the custom ini file so that the path can be stored to the service registry
+            metric_service.install(service_args=service_args, custom_config_file=exporter_args.configfile)
+            #metric_service = RunMetricsService.install(service_args=service_args, custom_config_file=exporter_args.configfile)
+        else:
+            # metric_service.set_config_path
+            metric_service.parse_command_line(service_args=service_args, servicename=CONF.SERVICE_NAME)
+            #metric_service = RunMetricsService.parse_command_line(arguments=service_args)
 
 
     

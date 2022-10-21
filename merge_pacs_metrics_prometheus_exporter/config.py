@@ -23,58 +23,47 @@ from os.path import dirname, join
 _default_configpath = join(dirname(dirname(os.path.realpath(__file__))), "merge_pacs_metrics_prometheus_exporter", "default_config.ini")
 _custom_configpath = join(dirname(dirname(os.path.realpath(__file__))), "config.ini")
 
-# # Get configuration values from the custom config.ini file, if it exists
-# def get_config(file_path=_custom_configpath):
-#     config = configparser.ConfigParser()
-
-#     if (file_path):
-#         logging.info(f'Reading custom configuration from {file_path}')
-#         try:
-#             # Use readfile so we can throw an error to the user if the config they specified can't be opened
-#             config.read_file(open(file_path))
-#         except:
-#             logging.warning(f'Failed to read supplied configuration file {file_path}. Using configuration default values.')
-#             logging.raiseExceptions
-    
-#     return config
-
-
 class _Config:
     """
     Class to read and hold configuration values from both the default and, optionally, custom configuration files.
     """
     def __init__(self, file_path = None):
         self.config = configparser.ConfigParser()
+        #self.load_configurations(file_path)
 
-        logging.info(f'Reading configuration data from default location: {_default_configpath}')
+    def load_configurations(self, file_path = _custom_configpath):
+        """
+        Loads the default configuration values and any custom configuration from a provided filename
+        """
         self._load_default_config()
-
-        logging.info(f'Checking for custom configuration in {_custom_configpath}')
-        self.load_custom_config()
-
-    # def set_custom_config(self, file_path):
-    #     self.config_file_path = file_path
-    #     logging.info(f'Custom configuration file provided: {self.config_file_path}')
+        self._load_custom_config(file_path = file_path)
 
     def _load_default_config(self):
         """
         Load default configuration values from the default ini file provided with the package
         """
+        logging.info(f'Reading configuration data from default location: {_default_configpath}')
         try:
             self.config.read_file(open(_default_configpath))
         except:
             logging.warning(f'Failed to read default configuration file {_default_configpath}. Using fallback values.')
             logging.raiseExceptions
 
-    def load_custom_config(self, file_path = _custom_configpath):
+    def _load_custom_config(self, file_path = _custom_configpath):
         """
-        Load custom configuration values from the path provided, or from config.ini in the root of the package by default
+        Load custom configuration values from the path provided
         """
-        dataset = self.config.read(file_path)
-        if len(dataset) == 0:
-            logging.warning(f'Failed to find custom configuration file {file_path}. Using configuration default values only.')
+        logging.info(f'Checking for custom configuration in {file_path}')
+        try:
+            dataset = self.config.read(file_path)
+        except TypeError:
+            # No file_path provided
+            pass
         else:
-            logging.info(f'Custom configuration values read')
+            if len(dataset) == 0:
+                logging.warning(f'Failed to find custom configuration file {file_path}. Using configuration default values only.')
+            else:
+                logging.info(f'Custom configuration values read')
 
     # General options
     @property
