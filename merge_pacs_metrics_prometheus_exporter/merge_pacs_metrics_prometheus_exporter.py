@@ -4,19 +4,14 @@ Purpose:
 
  """
 
-#from this import d
 from .config import CONF
 from .__init__ import __version__
 from .metrics_classes import ExporterSelfMetrics, MessagingServerAppMetrics, WorklistServerAppMetrics, ClientMessagingServerAppMetrics, \
         ApplicationServerAppMetrics, EANotificationProcessorAppMetrics, SchedulerAppMetrics, SenderAppMetrics
 import argparse
-#from datetime import datetime
 import logging
 import os
-#import pandas
 from prometheus_client import start_http_server
-#import re
-#import requests
 import servicemanager
 import socket
 import sys
@@ -330,7 +325,7 @@ def main():
             metric_service.install(service_args=service_args, custom_config_file=configfile)
         if 'update' in service_args:
             # in the case that we're updating the service. Provide path to the custom ini file so that the path can be updated in the registry.
-            metric_service.install(service_args=service_args, custom_config_file=configfile)
+            metric_service.update(service_args=service_args, custom_config_file=configfile)
         else:
             metric_service.parse_command_line(service_args=service_args)
 
