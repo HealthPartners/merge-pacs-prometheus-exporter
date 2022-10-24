@@ -1,86 +1,19 @@
-""" 
-Purpose:
-    Collect and log metrics from the locally hosted pages that Merge PACS processes expose. Reformat the data into Prometheus formatting.
-
-Prerequisites:
-  0) Of course python must be installed. Install it for all users and choose the "Install py launcher" option.
-  1) The prometheus_client package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org prometheus_client'
-  2) The pandas package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pandas'
-  3) The requests package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org requests'
-  4) The lxml package must be installed with 'pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org lxml'
-  5) Install module pywin32
-            * Note the "trusted-host" part may be required on servers because python doesn't recognize the HP SSL certificate that the NetScalers use for SSL inspection
-
-Also, see this page from where I stole the class format used here: https://trstringer.com/quick-and-easy-prometheus-exporter/
-
-Created: 3/4/2022
-Versions:
- 1.0 - 03/15/22 - created by Ben
- 2.0 - 03/21/22  - Added the rest of the metrics Hari has already created logic for.
-                - Moved three "common" parsing functions to the main body instead of being inside each class
-                - Gave each metric class more input arguments so that more lines could just be identical in each class (e.g. prefix)
- 3.0 - 03/25/22 - Updated to be able to start as a service (or not, using a "noservice" arguement), other improvements
- 3.1 - 03/27/22 - Made a separate function to initialize metrics to be able to reuse it in both the "noservice" and regular methods of running
- 3.2 - 04/08/22 - Add exporter info class to be able to export some info metrics about this process. Starting with just the version number of the exporter.
- 3.3 - 04/12/22 - Add additional EA NP metrics for JMS sessions and active studies/images
- 3.4 - 05/17/22 - Add sender service metrics
- 3.5 - 05/17/22 - Clear scheduler active threads metric before collection each time since content is dynamic
- """
-
+"""
+Each of the classess that define which metrics to collect and how to collect them are defined here. They are
+imported inidividually in the main script
+"""
+from .config import CONF
+from .__init__ import __version__
 from datetime import datetime
 import logging
-import os
 import pandas
 from prometheus_client import start_http_server, Gauge, Summary, Info, Counter
 import re
 import requests
-import servicemanager
-import socket
-import sys
-import time
-import win32event
-import win32service 
-import win32serviceutil
 
-
-"""
-General steps:
-    Set global definitions for some static information (http port, log level, etc.)
-    In main():
-        Initialize new classes of AppMetrics -- one new class per service to monitor (***AppMetrics.__init__)
-            Declare the metric definitions for this service
-        Start the http mini server process to serve metric results on configured port
-        Run an infinite loop to refresh the metric data from source every polling interval
-            Fetch and format metrics data for each metric (***AppMetrics.fetch)
-                Connect to services's local http port
-                Parse output for each service
-                Assign output to metrics
-            [repeat loop]
-
-"""
-
-##
-## Definitions
-##
 
 # Current software version
-CURRENT_VERSION = 3.6
-
-# How often the metric data should be refreshed from the application source
-POLLING_INTERVAL_SECONDS = 20
-
-# What port this application should host the local http output on (default is 8080)
-HOSTING_PORT = 7601
-
-# Application server metrics page login information -- needed for the Application Server (MergePACSWeb) service. This is valid Merge PACS user.
-# The APP_DOMAIN setting must match the domain value you have configured in the LDAP servers configuration in Merge Management
-APP_USERNAME = 'merge'
-APP_PASSWORD = 'H3@lthp@rtn3rsP@C5'
-APP_DOMAIN = 'healthpartners.int'
-
-# Set logging parameters
-# Change level to print more or fewer debugging messages
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+CURRENT_VERSION = __version__
 
 class ExporterSelfMetrics:
     """
@@ -126,7 +59,6 @@ class ExporterSelfMetrics:
         self.i_exporter_version.labels(server=self.server_label, version=CURRENT_VERSION)
 
         logging.info(f'Done fetching metrics for this polling interval for {self.service_name}')
-
 
 class MessagingServerAppMetrics:
     """
@@ -734,7 +666,7 @@ class EANotificationProcessorAppMetrics:
             "Jobs Dispatched", "Dispatched Jobs Queued", "Studies Locked", "Expected Instances", "Expected Events"]
 
         # This function will parse 9 different columns from the same table, so we need to map which columns end up in which metrics.
-        # This dict maps the column names (header values in the able) to the associated metric object
+        # This dict maps the column names (header values in the table) to the associated metric object
         column_name_to_metric_obj_dict = {
             'Jobs Constructed' :        self.g_jobs_constructed,
             'Jobs being Constructed' :  self.g_jobs_being_constructed,
@@ -756,7 +688,7 @@ class EANotificationProcessorAppMetrics:
             table_dfs = pandas.read_html(metrics_html, match=search_tables_for_text)
             table_df = table_dfs[0]
         except:
-            logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get received notification counts. Not creating metric.')
+            logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get notification manager counts. Not creating metric.')
             logging.raiseExceptions
         else:
             for column_name in column_name_to_metric_obj_dict:
@@ -1181,209 +1113,3 @@ def _parse_memory_utilization(memory_current_metric_obj, memory_peak_metric_obj,
         memory_peak_metric_obj.labels(server=server_label, memoryType='native').set(native_peak)
         memory_peak_metric_obj.labels(server=server_label, memoryType='process').set(process_peak)
         logging.info(f'  Metrics created for memory utilization')
-
-def _initialize_metric_classes(
-    messaging_server_metric_url = 'http://localhost:11104/serverStatus',
-    worklist_server_metric_url='http://localhost:11108/serverStatus',
-    client_messaging_server_metric_url='http://localhost:11109/serverStatus',
-    application_server_metric_url='http://localhost/servlet/AppServerMonitor',
-    ea_notification_processor_metric_url='http://localhost:11111/serverStatus',
-    scheduler_metric_url='http://localhost:11098/serverStatus',
-    sender_metric_url='http://localhost:11110/serverStatus',
-    server_name_label = ''
-):
-    """
-    Initialize each of the promtheus_client classes for each of the metrics we're going to collect. 
-    Arguments: Optional list of specific URLs to use for each metric service (otherwise defaults to localhost)
-    Returns: A list of class objects initialized. Use these objects to call the fetch() method for each one to 
-        populate the registry with metric values.
-    """
-
-    metric_class_objects = []
-
-    if not server_name_label:
-        server_name_label = os.getenv('COMPUTERNAME', 'merge_pacs_unknown_server').lower()
-
-    exporter_self_metrics = ExporterSelfMetrics(metric_url=None, \
-        metric_server_label=server_name_label, metric_service_name=f'{sys.argv[0]} self metrics', metric_prefix='merge_pacs_exporter')
-    metric_class_objects.append(exporter_self_metrics)
-
-    messaging_server_app_metrics = MessagingServerAppMetrics(metric_url=messaging_server_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Messaging Server', metric_prefix='merge_pacs_msgs')
-    metric_class_objects.append(messaging_server_app_metrics)
-
-    worklist_server_app_metrics = WorklistServerAppMetrics(metric_url=worklist_server_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Worklist Server', metric_prefix='merge_pacs_ws')
-    metric_class_objects.append(worklist_server_app_metrics)
-    
-    client_messaging_server_app_metrics = ClientMessagingServerAppMetrics(metric_url=client_messaging_server_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Client Messaging Server', metric_prefix='merge_pacs_cms')
-    metric_class_objects.append(client_messaging_server_app_metrics)
-
-    application_server_app_metrics = ApplicationServerAppMetrics(metric_url=application_server_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Application (MergePACSWeb) Server (/servlet/AppServerMonitor)', \
-        metric_prefix='merge_pacs_as', metric_username=APP_USERNAME, metric_password=APP_PASSWORD, metric_domain=APP_DOMAIN)
-    metric_class_objects.append(application_server_app_metrics)
-
-    ea_notification_procesor_app_metrics = EANotificationProcessorAppMetrics(metric_url=ea_notification_processor_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='EA Notification Processor', metric_prefix='merge_pacs_eanp')
-    metric_class_objects.append(ea_notification_procesor_app_metrics)
-
-    scheduler_app_metrics = SchedulerAppMetrics(metric_url=scheduler_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Scheduler', metric_prefix='merge_pacs_scheds')
-    metric_class_objects.append(scheduler_app_metrics)
-
-    sender_app_metrics = SenderAppMetrics(metric_url=sender_metric_url, \
-        metric_server_label=server_name_label, metric_service_name='Sender', metric_prefix='merge_pacs_sends')
-    metric_class_objects.append(sender_app_metrics)
-
-    return metric_class_objects
-
-
-class RunHealthPartnersMetricsService(win32serviceutil.ServiceFramework):
-    """ Options to install, run, start and restart this application as a Windows service
-        See: https://stackoverflow.com/questions/69008155/run-python-script-as-a-windows-service
-    """
-    _svc_name_ = 'HealthPartnersMetricsService'
-    _svc_display_name_ = 'HealthPartnersMetricsService'
-    _svc_description_ = 'HealthPartners metrics service for Prometheus export'
-
-    @classmethod
-    def parse_command_line(cls):
-        win32serviceutil.HandleCommandLine(cls)
-
-    def __init__(self, args):
-        win32serviceutil.ServiceFramework.__init__(self, args)
-        self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
-        socket.setdefaulttimeout(60)
-
-    def SvcStop(self):
-        self.stop()
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        win32event.SetEvent(self.hWaitStop)
-
-    def SvcDoRun(self):
-        self.start()
-        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
-                              servicemanager.PYS_SERVICE_STARTED,
-                              (self._svc_name_, ''))
-        self.main()
-
-    def start(self):
-        self.isrunning = True
-
-    def stop(self):
-       self.isrunning = False
-
-    def main(self):
-        # Call function to return a list of metric class objects that are initialized and ready to populate with data using each
-        # object's fetch method
-
-        metric_objects = _initialize_metric_classes()
-        
-        # Start up the http mini-server
-        logging.info(f'Starting http server on port {HOSTING_PORT}')
-        start_http_server(HOSTING_PORT)
-
-        while self.isrunning:
-            # Start the loop that will refresh the metrics at every polling interval. When the service stop
-            # command is issued, isrunning will be updated to be False to break the loop. Note that it will take up
-            # to POLLING_INTERVAL_SECONDS to stop the service. So some optimization might be good.
-            logging.info(f'### Starting metric collection for this iteration ###')
-
-            for metric_object in metric_objects:
-                try:
-                    metric_object.fetch()
-                except:
-                    logging.error(f'Failed to call the fetch() method for object of class {metric_object.__class__.__name__}')
-                    logging.raiseExceptions
-
-            logging.info(f'### End metric collection for this iteration. Sleeping for {POLLING_INTERVAL_SECONDS} seconds. ###')
-            
-            wait_seconds = 0     # reset the counter
-
-            while wait_seconds < POLLING_INTERVAL_SECONDS and self.isrunning:
-                #time.sleep(POLLING_INTERVAL_SECONDS)
-                time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
-                wait_seconds = wait_seconds + 1
-
-        logging.info('Service stop received. Terminating loop.')
-
-
-def main():
-    """Main entry point
-    
-    There is an option to run the code without going through the windows service process mainly for debugging. You can
-    also optionally provide a second argument in this mode to target a server other than the localhost. But this option
-    isn't very helpful after Merge PACS v8 because the service status URLs are not available remotely.
-
-        this_script.py noservice [servername]
-            OR
-        this_script.py [options] install|update|remove|start [...]|stop|restart [...]|debug [...]
-    
-    """
-
-    logging.info(f'Starting {sys.argv[0]} version {CURRENT_VERSION}')
-
-    try:
-        arg1 = sys.argv[1]
-    except:
-        arg1 = None
-
-    if arg1 == 'noservice':
-        ### Run WITHOUT calling the service options install, run, start and restart this application as a Windows service
-
-        try:
-            # If a second argument is provided use that as the server name to collect metrics from
-            server_name = sys.argv[2]
-        except:
-            # Default to localhost here, which should generally be what you want
-            server_name = 'localhost'
-
-        # Initialize new classes to set up all of the class definitions, define the metrics, etc.
-        metric_objects = _initialize_metric_classes(
-            messaging_server_metric_url = f'http://{server_name}:11104/serverStatus',
-            worklist_server_metric_url = f'http://{server_name}:11108/serverStatus',
-            client_messaging_server_metric_url = f'http://{server_name}:11109/serverStatus',
-            application_server_metric_url = f'http://{server_name}/servlet/AppServerMonitor',
-            ea_notification_processor_metric_url = f'http://{server_name}:11111/serverStatus',
-            scheduler_metric_url = f'http://{server_name}:11098/serverStatus',
-            sender_metric_url = f'http://{server_name}:11110/serverStatus',
-            server_name_label = server_name
-        )
-        
-        # Start up the http mini-server
-        logging.info(f'Starting http server on port {HOSTING_PORT}')
-        start_http_server(HOSTING_PORT)
-
-        while True:
-            # Start the loop that will refresh the metrics at every polling interval. When the service stop
-            # command is issued, isrunning will be updated to be False to break the loop. Note that it will take up
-            # to POLLING_INTERVAL_SECONDS to stop the service. So some optimization might be good.
-            logging.info(f'### Starting metric collection for this iteration ###')
-
-            for metric_object in metric_objects:
-                try:
-                    metric_object.fetch()
-                except:
-                    logging.error(f'Failed to call the fetch() method for object of class {metric_object.__class__.__name__}')
-                    logging.raiseExceptions
-
-            logging.info(f'### End metric collection for this iteration. Sleeping for {POLLING_INTERVAL_SECONDS} seconds. ###')
-            
-            wait_seconds = 0     # reset the counter
-
-            while wait_seconds < POLLING_INTERVAL_SECONDS:
-                #time.sleep(POLLING_INTERVAL_SECONDS)
-                time.sleep(1)   # check self.isrunning every 1 second to be able to break out the loop faster
-                wait_seconds = wait_seconds + 1
-
-        logging.warning('Somehow we have exited the metrics collection loop!')    
-
-    else:
-        # Pass the argument to the win32serviceutil command to be interested as a start/stop/install/remove/debug command for the service
-        hp_metric_service = RunHealthPartnersMetricsService.parse_command_line()
-    
-
-if __name__ == "__main__":
-    main()
