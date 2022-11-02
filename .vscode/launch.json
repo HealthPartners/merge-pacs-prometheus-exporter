@@ -5,6 +5,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Module",
+            "type": "python",
+            "request": "launch",
+            "module": "merge_pacs_metrics_prometheus_exporter",
+            "justMyCode": true,
+            "args": [
+                "--noservice",
+                "--configfile",
+                "C:\\HPMetrics\\config.ini"
+            ]
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Remote Attach",
             "type": "python",
             "request": "attach",
