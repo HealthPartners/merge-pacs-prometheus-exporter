@@ -104,6 +104,14 @@ class MessagingServerAppMetrics:
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
 
+        self.g_database_connections.clear()
+        self.g_service_uptime.clear()
+        self.g_memory_current.clear()
+        self.g_memory_peak.clear()
+        self.g_message_counts.clear()
+
+
+
         # Get server status page data
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
@@ -208,6 +216,18 @@ class WorklistServerAppMetrics:
         Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
+
+        self.g_database_connections.clear()
+        self.g_service_uptime.clear()
+        self.g_memory_current.clear()
+        self.g_memory_peak.clear()
+        self.g_connected_clients.clear()
+        self.g_active_worklists.clear()
+        self.g_exam_cache_loaded.clear()
+        self.g_exam_cache_stale.clear()
+        self.g_exam_cache_loads_total.clear()
+        self.g_pending_jobs.clear()
+ 
 
         # Get server status page data
         try:
@@ -348,6 +368,9 @@ class ClientMessagingServerAppMetrics:
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
 
+        #clear old metrics
+        self.g_active_users.clear()
+
         # Get server status page data
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
@@ -430,6 +453,14 @@ class ApplicationServerAppMetrics:
         Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
+
+
+        #clear old metrics
+        self.g_database_connections.clear()
+        self.g_service_uptime.clear()
+        self.g_memory_current.clear()
+        self.g_memory_peak.clear()
+        self.s_query_duration.clear()
 
         # Get server status page data
         try:
@@ -587,6 +618,31 @@ class EANotificationProcessorAppMetrics:
         Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
+
+        #clear old metrics
+        self.g_database_connections.clear()
+        self.g_service_uptime.clear()
+        self.g_memory_current.clear()
+        self.g_memory_peak.clear()
+        self.g_active_studies.clear()
+        self.g_studies_processed_total.clear()
+        self.g_images_processed_total.clear()
+        self.g_jms_sender_connection.clear()
+        self.g_jms_receiver_connection.clear()
+        self.g_jms_sender_sessions.clear()
+        self.g_jms_receiver_sessions.clear()
+        self.g_active_studies_idletime_max.clear()
+        self.g_active_studies_idletime_avg.clear()
+        self.g_received_notifications.clear()
+        self.g_jobs_constructed.clear()
+        self.g_jobs_being_constructed.clear()
+        self.g_jobs_waiting_for_locks.clear()
+        self.g_jobs_blocked.clear()
+        self.g_jobs_dispatched.clear()
+        self.g_studies_locked.clear()
+        self.g_expected_instances.clear()
+        self.g_expected_events.clear()
+
 
         # Get server status page data
         try:
@@ -822,6 +878,16 @@ class SchedulerAppMetrics:
         Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
+        
+        
+        #clear old metrics
+        self.g_database_connections.clear()
+        self.g_service_uptime.clear()
+        self.g_memory_current.clear()
+        self.g_memory_peak.clear()
+        self.g_active_threads.clear()
+        self.g_jobs_blocked.clear()
+
 
         # Get server status page data
         try:
@@ -973,7 +1039,15 @@ class SenderAppMetrics:
         Connect to the Merge PACS process's metrics page and parse results into Prometheus metrics
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
-
+        
+        #clear old metrics
+        self.g_database_connections.clear()
+        self.g_service_uptime.clear()
+        self.g_memory_current.clear()
+        self.g_memory_peak.clear()
+        self.g_job_queue.clear()
+        self.g_process_instance_stats.clear()
+        
         # Get server status page data
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
