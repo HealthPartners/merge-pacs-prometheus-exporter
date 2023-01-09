@@ -97,6 +97,7 @@ class MessagingServerAppMetrics:
         self.g_memory_current = Gauge(f'{self.prefix}_memory_current', f'Current memory utilization for various types from {self.service_name}', ['server', 'memoryType'])
         self.g_memory_peak = Gauge(f'{self.prefix}_memory_peak', f'Peak memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
         self.g_message_counts = Gauge(f'{self.prefix}_message_count', f'Number of messages per queue from the {self.service_name} service', ['server', 'queueName', 'queueType'])
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
     def fetch(self, http_request_timeout = 2.0):
         """ 
@@ -109,10 +110,12 @@ class MessagingServerAppMetrics:
         self.g_memory_current.clear()
         self.g_memory_peak.clear()
         self.g_message_counts.clear()
-
+        self.g_service_status.clear()
 
 
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
+
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
             
@@ -126,6 +129,9 @@ class MessagingServerAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1)
+
             ### Parse active and idle database connections
             # self._parse_database_connections(r.text)
             _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
@@ -210,6 +216,7 @@ class WorklistServerAppMetrics:
         self.g_exam_cache_stale = Gauge(f'{self.prefix}_exam_cache_stale', f'Number of stale cached exams by {self.service_name} service', ['server'])
         self.g_exam_cache_loads_total = Gauge(f'{self.prefix}_exam_cache_total_loads', f'Number of total cached exams loaded by {self.service_name} service since startup', ['server'])
         self.g_pending_jobs = Gauge(f'{self.prefix}_pending_jobs', f'Pending jobs by type from {self.service_name} service', ['server', 'pendingJobType'])
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
     def fetch(self, http_request_timeout = 2.0):
         """ 
@@ -227,9 +234,11 @@ class WorklistServerAppMetrics:
         self.g_exam_cache_stale.clear()
         self.g_exam_cache_loads_total.clear()
         self.g_pending_jobs.clear()
+        self.g_service_status.clear()
  
 
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
             
@@ -243,6 +252,9 @@ class WorklistServerAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1)
+            
             ### Parse active and idle database connections
             # self._parse_database_connections(r.text)
             _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
@@ -361,6 +373,7 @@ class ClientMessagingServerAppMetrics:
         logging.info(f'Initializing metrics for {self.service_name}')
 
         self.g_active_users = Gauge(f'{self.prefix}_active_users', f'Active Merge PACS users from the {self.service_name} service)', ['server'])
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
     def fetch(self, http_request_timeout=2):
         """ 
@@ -370,8 +383,10 @@ class ClientMessagingServerAppMetrics:
 
         #clear old metrics
         self.g_active_users.clear()
+        self.g_service_status.clear()
 
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
             
@@ -385,6 +400,9 @@ class ClientMessagingServerAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1) 
+            
             ### Parse results for Active and Idle DB connections
             self._parse_active_users(r.text)
 
@@ -446,6 +464,7 @@ class ApplicationServerAppMetrics:
         self.g_memory_current = Gauge(f'{self.prefix}_memory_current', f'Current memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
         self.g_memory_peak = Gauge(f'{self.prefix}_memory_peak', f'Peak memory utilization for various types from {self.service_name} service', ['server', 'memoryType'])
         self.s_query_duration = Summary(f'{self.prefix}_query_duration_seconds', f'Query duration by query type for the {self.service_name} service', ['server', 'queryType'])
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
 
     def fetch(self, http_request_timeout=2):
@@ -461,8 +480,11 @@ class ApplicationServerAppMetrics:
         self.g_memory_current.clear()
         self.g_memory_peak.clear()
         self.s_query_duration.clear()
+        self.g_service_status.clear()
 
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
+        
         try:
             # This page requires authentication, construct the payload with login informaiton and start a session
             payload = {'amicasUsername': self.metric_username, 
@@ -486,6 +508,10 @@ class ApplicationServerAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1)
+
             # Update with the current time since we just we scraped data. Next around we can process any data added since this scrape.
             self.current_data_scrape_time = datetime.now()
 
@@ -611,7 +637,7 @@ class EANotificationProcessorAppMetrics:
         self.g_studies_locked = Gauge(f'{self.prefix}_studies_locked', f'Number of studies currently locked by the {self.service_name} service', ['server'])
         self.g_expected_instances = Gauge(f'{self.prefix}_expected_instances', f'Expected number of instances(?) in the {self.service_name} service', ['server'])
         self.g_expected_events = Gauge(f'{self.prefix}_expected_events', f'Expected number of events(?) in the {self.service_name} service', ['server'])
-
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
     def fetch(self, http_request_timeout = 2.0):
         """ 
@@ -642,9 +668,11 @@ class EANotificationProcessorAppMetrics:
         self.g_studies_locked.clear()
         self.g_expected_instances.clear()
         self.g_expected_events.clear()
+        self.g_service_status.clear()
 
 
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
             
@@ -658,6 +686,9 @@ class EANotificationProcessorAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1) 
+
             ### Parse active and idle database connections
             _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
 
@@ -872,6 +903,7 @@ class SchedulerAppMetrics:
         self.g_active_threads = Gauge(f'{self.prefix}_active_threads', f'Jobs by status in the {self.service_name} service', \
             ['server', 'command', 'jobStatus']) # Where jobStatus is one of: procssed, queued, wait, failed, or selected (values in columns 1-3 in the table)
         self.g_jobs_blocked = Gauge(f'{self.prefix}_jobs_blocked', f'Jobs that are blocked from processing in the {self.service_name} service', ['server']) # This is a separate value from the above measures
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
     def fetch(self, http_request_timeout = 2.0):
         """ 
@@ -887,9 +919,11 @@ class SchedulerAppMetrics:
         self.g_memory_peak.clear()
         self.g_active_threads.clear()
         self.g_jobs_blocked.clear()
+        self.g_service_status.clear()
 
 
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
             
@@ -903,6 +937,10 @@ class SchedulerAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1)
+            
+            
             ### Parse active and idle database connections
             # self._parse_database_connections(r.text)
             _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
@@ -1033,6 +1071,7 @@ class SenderAppMetrics:
 
         self.g_job_queue = Gauge(f'{self.prefix}_job_queue', f'Jobs queued by status for the {self.service_name} service', ['server', 'status'])
         self.g_process_instance_stats = Gauge(f'{self.prefix}_instance_stats', f'Instances sent and failed since startup by the {self.service_name} service', ['server', 'status'])
+        self.g_service_status = Gauge(f'{self.prefix}_service_status', f'Staus of the {self.service_name} service', ['server'])
 
     def fetch(self, http_request_timeout = 2.0):
         """ 
@@ -1047,8 +1086,10 @@ class SenderAppMetrics:
         self.g_memory_peak.clear()
         self.g_job_queue.clear()
         self.g_process_instance_stats.clear()
+        self.g_service_status.clear()
         
         # Get server status page data
+        self.g_service_status.labels(server=self.server_label).set(0)
         try:
             r = requests.get(self.metric_url, timeout=http_request_timeout)
             
@@ -1062,6 +1103,9 @@ class SenderAppMetrics:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
         else:
+            #set status to one if we can successfully able to get to page
+            self.g_service_status.labels(server=self.server_label).set(1)
+
             ### Parse active and idle database connections
             # self._parse_database_connections(r.text)
             _parse_database_connections(database_connection_metric_obj=self.g_database_connections, server_label=self.server_label, metrics_html=r.text)
