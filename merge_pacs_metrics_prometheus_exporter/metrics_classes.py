@@ -165,7 +165,6 @@ class MessagingServerAppMetrics:
             table = table_list[0]
         except:
             logging.warning(f'Failed to parse table of message counts. Not creating metric.')
-            logging.raiseExceptions
         else:
             for index, row in table.iterrows():
                 if row['Type'] != 'Temp':
@@ -305,7 +304,6 @@ class WorklistServerAppMetrics:
             #waiting = match.group('waiting')
         except:
             logging.warning(f'Failed to match the pattern for active worklists. Not creating metric.')
-            logging.raiseExceptions
         else:
             for worklistStatus, val in match.groupdict().items():
                 self.g_active_worklists.labels(server=self.server_label, worklistStatus=worklistStatus).set(val)
@@ -417,7 +415,6 @@ class ClientMessagingServerAppMetrics:
         except:
             # Failed to match patterns as expected
             logging.warning(f'Failed to match the pattern for database connections. Not creating metric.')
-            logging.raiseExceptions
         else:
             # Populate Metric
             self.g_active_users.labels(server=self.server_label).set(active_users)
@@ -473,17 +470,23 @@ class ApplicationServerAppMetrics:
         """
         logging.info(f'Starting to collect metric data for {self.service_name} from {self.metric_url}')
 
-
+        # Quick note here: The Application Service takes so long to open and scrape that we need to avoid
+        # clearing current metric values at the beginning of this function. Otherwise there are several seconds 
+        # when the value is cleared and the new value is not yet populated. This leads to missing data if the time
+        # aligns with the scrape interval, which happens frequently.
+        #
+        # Instead, plan to clear current values in an 'except' block in case the metrics collection attempt fails.
+        
         #clear old metrics
-        self.g_database_connections.clear()
-        self.g_service_uptime.clear()
-        self.g_memory_current.clear()
-        self.g_memory_peak.clear()
-        self.s_query_duration.clear()
-        self.g_service_status.clear()
+        #self.g_database_connections.clear()
+        #self.g_service_uptime.clear()
+        #self.g_memory_current.clear()
+        #self.g_memory_peak.clear()
+        #self.s_query_duration.clear()
+        #self.g_service_status.clear()
 
         # Get server status page data
-        self.g_service_status.labels(server=self.server_label).set(0)
+        #self.g_service_status.labels(server=self.server_label).set(0)
         
         try:
             # This page requires authentication, construct the payload with login informaiton and start a session
@@ -502,11 +505,17 @@ class ApplicationServerAppMetrics:
             r.raise_for_status()
         except requests.exceptions.Timeout:
             logging.error(f'Timed out getting metrics page {self.metric_url}!')
+            self.g_service_status.labels(server=self.server_label).set(0)
         except requests.exceptions.HTTPError as httperr:
             logging.error(f'HTTP error getting data from {self.metric_url}! Error: {httperr}')
+            self.g_service_status.labels(server=self.server_label).set(0)
         except requests.exceptions.RequestException as rex:
             # Some sort of catastrophic error. bail.
             logging.error(f'Failed getting metrics from {self.metric_url}! Error: {rex}')
+            self.g_service_status.labels(server=self.server_label).set(0)
+        except Exception as err:
+            logging.error(f'An error occurred getting data for the Application Server service. Error: {err}')
+            self.g_service_status.labels(server=self.server_label).set(0)
         else:
 
             #set status to one if we can successfully able to get to page
@@ -538,6 +547,10 @@ class ApplicationServerAppMetrics:
 
     def _parse_average_query_duration(self, metrics_html):
         logging.info(f'  Parsing text for average query duration metric')
+        
+        # Determine if the scrape for new data was successful or not but updating this variable
+        avg_query_duration_metric_found = False
+
         try:
             # Find the table (should be the only one, but to be safe) containing the term "<TH><B>Filters</B></TH>"
             # Assumes the table will have columns named "ID", "Status", "Type", "Priority", "User", "Results", "Duration", "Start Time", "Wait Time", "Filters"
@@ -548,9 +561,8 @@ class ApplicationServerAppMetrics:
 
             # Convert Start Time column in to Python datetime
             table_df['Start Time'] = pandas.to_datetime(table_df['Start Time'])
-        except:
-            logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get message counts. Not creating metric.')
-            logging.raiseExceptions
+        except Exception as err:
+            logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get message counts. Clearing previous values. Error: {err}')
         else:
             pattern = re.compile(r'(?P<duration>\d+) (?P<unit>(ms|s))')  # Pattern that will match either "1 s" or "123 ms" in Duration column
             # create a smaller dataframe where only rows that have a Start Time more recent than the last time we scraped data are included
@@ -570,10 +582,14 @@ class ApplicationServerAppMetrics:
                 except:
                     # The duration format isn't recognized
                     logging.warning(f'  Failed to parse the duration format for string: {row["Duration"]}')
-                    logging.raiseExceptions
                 else:
                     # Add observation to summary metric
-                    self.s_query_duration.labels(server=self.server_label, queryType=row['Type']).observe(query_duration_s)
+                    avg_query_duration_metric_found = True
+
+        if avg_query_duration_metric_found:
+            self.s_query_duration.labels(server=self.server_label, queryType=row['Type']).observe(query_duration_s)
+        else:
+            self.s_query_duration.clear()
                 
             logging.info(f'  Metric created for average query duration (if there is any recent data)')
 
@@ -729,7 +745,6 @@ class EANotificationProcessorAppMetrics:
             # table_df['Start Time'] = pandas.to_datetime(table_df['Start Time'])
         except:
             logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get received notification counts. Not creating metric.')
-            logging.raiseExceptions
         else:
             for column in table_df:
                 try:
@@ -740,7 +755,6 @@ class EANotificationProcessorAppMetrics:
                 except:
                     # The duration format isn't recognized
                     logging.warning(f'  Failed to parse column name and value for {column}')
-                    logging.raiseExceptions
                 else:
                     # Add observation to summary metric
                     self.g_received_notifications.labels(server=self.server_label, notificationType=normalized_col_name).set(col_value)
@@ -776,7 +790,6 @@ class EANotificationProcessorAppMetrics:
             table_df = table_dfs[0]
         except:
             logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get notification manager counts. Not creating metric.')
-            logging.raiseExceptions
         else:
             for column_name in column_name_to_metric_obj_dict:
                 try:
@@ -786,7 +799,6 @@ class EANotificationProcessorAppMetrics:
                 except:
                     # The duration format isn't recognized
                     logging.warning(f'  Failed to parse column name and value for {column_name}')
-                    logging.raiseExceptions
                 else:
                     # Add observation to summary metric
                     this_metric_obj.labels(server=self.server_label).set(column_val)      
@@ -808,7 +820,6 @@ class EANotificationProcessorAppMetrics:
             # table_df['Start Time'] = pandas.to_datetime(table_df['Start Time'])
         except:
             logging.warning(f'  Failed to parse active studies and images counts. Not creating metrics.')
-            logging.raiseExceptions
         else:
             self.g_active_studies.labels(server=self.server_label).set(active_studies)
             self.g_studies_processed_total.labels(server=self.server_label).set(studies_processed)
@@ -827,7 +838,6 @@ class EANotificationProcessorAppMetrics:
             jms_receiver_connection = match.group('jms_receiver_connection')
         except:
             logging.warning(f'  Failed to parse JMS connection counts counts. Not creating metrics.')
-            logging.raiseExceptions
         else:
             self.g_jms_sender_connection.labels(server=self.server_label).set(jms_sender_connection)
             self.g_jms_receiver_connection.labels(server=self.server_label).set(jms_receiver_connection)
@@ -841,7 +851,6 @@ class EANotificationProcessorAppMetrics:
             jms_receiver_sessions = match.group('jms_receiver_sessions')
         except:
             logging.warning(f'  Failed to parse JMS session counts. Not creating metrics.')
-            logging.raiseExceptions
         else:
             self.g_jms_sender_sessions.labels(server=self.server_label).set(jms_sender_sessions)
             self.g_jms_receiver_sessions.labels(server=self.server_label).set(jms_receiver_sessions)
@@ -979,14 +988,12 @@ class SchedulerAppMetrics:
 
         except:
             logging.warning(f'  Failed to find a table with the term "{search_tables_for_text}" to get received notification counts. Not creating metric.')
-            logging.raiseExceptions
         else:
             for index, row in table_df.iterrows():
                 try:
                     jobs_processed = int(row['Jobs Processed']) # Sometimes this value is "-", so don't assign a value for now if so
                 except:
                     logging.warning(f'  Failed to parse "Jobs Processed" for row: {row}')
-                    logging.raiseExceptions
                 else:
                     self.g_active_threads.labels(server=self.server_label, command=row['Command'], jobStatus='processed').set(jobs_processed)
 
@@ -999,7 +1006,6 @@ class SchedulerAppMetrics:
                     jobs_failed = int(match.group('failed'))
                 except:
                     logging.warning(f'    Failed to parse jobs queued/wait/failed values for row "{row}"')
-                    logging.raiseExceptions
                 else:
                     self.g_active_threads.labels(server=self.server_label, command=row['Command'], jobStatus='wait').set(jobs_wait)
                     self.g_active_threads.labels(server=self.server_label, command=row['Command'], jobStatus='failed').set(jobs_failed)
@@ -1009,7 +1015,6 @@ class SchedulerAppMetrics:
                     jobs_selected = int(row['Jobs Selected'])   # Sometimes this value is "-", so don't assign a value for now if so
                 except:
                     logging.warning(f'  Failed to parse "Jobs Selected" for row: {row}')
-                    logging.raiseExceptions
                 else:
                     self.g_active_threads.labels(server=self.server_label, command=row['Command'], jobStatus='selected').set(jobs_selected)
                 
@@ -1026,7 +1031,6 @@ class SchedulerAppMetrics:
 
         except:
             logging.warning(f'  Failed to match pattern for jobs blocked data. Not creating metric.')
-            logging.raiseExceptions
         else:
             self.g_jobs_blocked.labels(server=self.server_label).set(jobs_blocked)      
             
@@ -1138,7 +1142,6 @@ class SenderAppMetrics:
 
         except:
             logging.warning(f'  Failed to match a pattern for the Sender Job Queue Summary data. Not creating metric.')
-            logging.raiseExceptions
         else:
             self.g_job_queue.labels(server=self.server_label, status='new').set(sender_job_queue_new)
             self.g_job_queue.labels(server=self.server_label, status='in_progress').set(sender_job_queue_in_progress)
@@ -1157,7 +1160,6 @@ class SenderAppMetrics:
 
         except:
             logging.warning(f'  Failed to match pattern for Send summary data. Not creating metric.')
-            logging.raiseExceptions
         else:
             self.g_process_instance_stats.labels(server=self.server_label, status='successful').set(successful_instances)      
             self.g_process_instance_stats.labels(server=self.server_label, status='failed').set(failed_instances)      
@@ -1173,11 +1175,10 @@ def _parse_database_connections(database_connection_metric_obj, server_label, me
         match = re.search(pattern, metrics_html)
         db_active = int(match.group('db_total')) - int(match.group('db_idle'))
         db_idle = int(match.group('db_idle'))
-        logging.raiseExceptions
-    except:
+    except Exception as err:
         # Failed to match patterns as expected
-        logging.warning(f'Failed to match the pattern for database connections. Not creating metric.')
-        
+        logging.warning(f'Failed to match the pattern for database connections. Clearing previous value and leaving null. Error: {err}')
+        database_connection_metric_obj.clear()
     else:
         # Populate Metric
         database_connection_metric_obj.labels(server=server_label, dbConnectionStatus='idle').set(db_idle)
@@ -1202,9 +1203,10 @@ def _parse_service_uptime(service_uptime_metric_obj, server_label, metrics_html)
             
         seconds = int(match.group('seconds'))
         up_time_h = hours + (minutes / 60) + (seconds / (60 * 60))
-    except:
+    except Exception as err:
         # Failed to match patterns as expected
-        logging.warning(f'Failed to match the pattern for server uptime. Not creating metric.')
+        logging.warning(f'Failed to match the pattern for server uptime. Clearing the current value and leaving null. Error: {err}')
+        service_uptime_metric_obj.clear()
     else:
         # Populate metric
         service_uptime_metric_obj.labels(server=server_label).set(up_time_h)
@@ -1221,8 +1223,9 @@ def _parse_memory_utilization(memory_current_metric_obj, memory_peak_metric_obj,
         native_peak = match.group('native_peak')
         process_current = match.group('process_current')
         process_peak = match.group('process_peak')
-    except:
-        logging.warning(f'Failed to match the pattern for memory utilization. Not creating metrics.')
+    except Exception as err:
+        logging.warning(f'Failed to match the pattern for memory utilization. Clearing the current value and leaving null. Error: {err}')
+        memory_current_metric_obj.clear()
     else:
         memory_current_metric_obj.labels(server=server_label, memoryType='java').set(java_current)
         memory_current_metric_obj.labels(server=server_label, memoryType='native').set(native_current)
