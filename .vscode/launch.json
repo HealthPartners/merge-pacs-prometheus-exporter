@@ -14,7 +14,9 @@
             "args": [
                 "--noservice",
                 "--configfile",
-                "C:\\HPMetrics\\config.ini"
+                "C:\\HPMetrics\\config.ini",
+                //"--logfile",
+                //"c:\\temp\\hpmetrics.log"
             ]
         },
         {
