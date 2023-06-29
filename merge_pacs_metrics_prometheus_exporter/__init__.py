@@ -2,7 +2,7 @@ from os.path import dirname, abspath
 import logging
 
 # Manually set each version increment here
-__version__ = '4.1.0'
+__version__ = '4.2.0'
 
 ROOT_DIR = dirname(abspath(__file__))
 
