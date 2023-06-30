@@ -252,9 +252,6 @@ def main():
         python -m merge_pacs_metrics_prometheus_exporter [options] install|update|remove|start [...]|stop|restart [...]|debug [...]
     
     """
-    logging.debug('argv = %s' % sys.argv)
-
-    logging.info(f'Running merge_pacs_metrics_prometheus_exporter version {CURRENT_VERSION}')
 
     program_name = 'python -m merge_pacs_metrics_prometheus_exporter'
 
@@ -264,7 +261,8 @@ def main():
     )
 
     parser.add_argument('--noservice', action='store_true', help='Run the script without installing the service. Useful for troubleshooting to view activity output on the console')
-    parser.add_argument('--configfile', action='store', help='Path to a locally customized configuration file in stanadard ini format. Note this only works with the --noservice option')
+    parser.add_argument('--configfile', action='store', help='Path to a locally customized configuration file in stanadard ini format.')
+    parser.add_argument('--logfile', action='store', help='Path to a local log file. Make this an absolute path to be sure it can be written to when running as a service.')
 
     # Parse the command line options for one of the above known arguments. The remaining arguments will be passed through to the win32serviceutil.HandleCommandLine
     # function to be interested as service control commands. Known arguments will be in args[0] and remaining arguments will be in args[1]
@@ -278,6 +276,18 @@ def main():
         configfile = os.path.abspath(exporter_args.configfile)
     except:
         configfile = None
+
+    # Get the absolute path to the supplied log file
+    try:
+        logfile = os.path.abspath(exporter_args.logfile)
+        #logging.basicConfig(filename=logfile, level=logging.INFO)
+        logging.FileHandler(filename=logfile)
+    except:
+        logfile = None
+
+    logging.debug('argv = %s' % sys.argv)
+
+    logging.info(f'Running merge_pacs_metrics_prometheus_exporter version {CURRENT_VERSION}')
 
     # When passing arguments to the win32serviceutil function, it expects a list in "argv" format. In other words, [0] should be the
     # program name, then [1:] should be the actual arguments to process. On other words, all the other arguments that aren't defined above.
